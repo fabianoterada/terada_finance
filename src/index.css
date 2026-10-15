@@ -1,0 +1,87 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-brand-border;
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-brand-bg text-slate-200 font-sans antialiased;
+    background-image:
+      radial-gradient(circle at 12% -10%, rgba(220, 38, 38, 0.14), transparent 42%),
+      radial-gradient(circle at 100% 0%, rgba(30, 41, 59, 0.9), transparent 55%);
+    background-attachment: fixed;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-brand-bg;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-brand-border rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-brand-redDark;
+  }
+
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-brand-surface/80 backdrop-blur border border-brand-border rounded-2xl shadow-card;
+  }
+
+  .input {
+    @apply w-full rounded-xl bg-brand-elevated/70 border border-brand-border px-3.5 py-2.5 text-sm
+      text-slate-100 placeholder:text-slate-500 outline-none transition
+      focus:border-brand-red focus:ring-2 focus:ring-brand-red/30;
+  }
+
+  .label {
+    @apply block text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1.5;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold
+      transition active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none;
+  }
+
+  .btn-primary {
+    @apply btn bg-brand-red text-white hover:bg-brand-redBright shadow-glow;
+  }
+
+  .btn-ghost {
+    @apply btn bg-brand-elevated/60 text-slate-300 border border-brand-border hover:border-brand-red/60 hover:text-white;
+  }
+
+  .btn-danger {
+    @apply btn bg-brand-redDark/20 text-brand-redBright border border-brand-redDark/50 hover:bg-brand-redDark/40;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold;
+  }
+}
