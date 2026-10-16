@@ -27,6 +27,14 @@ export default {
           subtle: '#4b5563',
           onPrimary: '#ffffff',
         },
+        state: {
+          success: '#047857',
+          successBg: '#ecfdf5',
+          successBorder: '#a7f3d0',
+          error: '#b91c1c',
+          errorBg: '#fef2f2',
+          errorBorder: '#fecaca',
+        },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'Segoe UI', 'Roboto', 'sans-serif'],

@@ -101,4 +101,12 @@
   .link-primary {
     @apply font-medium text-login-primary transition hover:text-login-primaryHover hover:underline;
   }
+
+  .alert-error {
+    @apply rounded-md border border-state-errorBorder bg-state-errorBg px-3 py-2 text-sm text-state-error;
+  }
+
+  .alert-success {
+    @apply rounded-md border border-state-successBorder bg-state-successBg px-3 py-2 text-sm text-state-success;
+  }
 }
