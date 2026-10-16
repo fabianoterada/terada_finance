@@ -31,16 +31,25 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
-  const signIn = useCallback(async (email, password) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) throw error
+  const requireClient = useCallback(() => {
+    if (!supabase) {
+      throw new Error(
+        'O armazenamento de dados ainda não está ativo. Ative o Lovable Cloud para usar o login.',
+      )
+    }
+    return supabase
   }, [])
 
+  const signIn = useCallback(async (email, password) => {
+    const { error } = await requireClient().auth.signInWithPassword({ email, password })
+    if (error) throw error
+  }, [requireClient])
+
   const signUp = useCallback(async (email, password) => {
-    const { data, error } = await supabase.auth.signUp({ email, password })
+    const { data, error } = await requireClient().auth.signUp({ email, password })
     if (error) throw error
     return data
-  }, [])
+  }, [requireClient])
 
   const signOut = useCallback(async () => {
     const { error } = await supabase.auth.signOut()
