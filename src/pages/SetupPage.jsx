@@ -25,6 +25,7 @@ const steps = [
 ]
 
 export default function SetupPage() {
+  if (window.location.search.includes('boom')) throw new Error('teste de recuperação')
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-10">
       <div className="card w-full max-w-2xl p-6 sm:p-8">
