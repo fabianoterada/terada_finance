@@ -52,16 +52,16 @@ export function AuthProvider({ children }) {
   }, [requireClient])
 
   const signOut = useCallback(async () => {
-    const { error } = await supabase.auth.signOut()
+    const { error } = await requireClient().auth.signOut()
     if (error) throw error
-  }, [])
+  }, [requireClient])
 
   const resetPassword = useCallback(async (email) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    const { error } = await requireClient().auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/login`,
     })
     if (error) throw error
-  }, [])
+  }, [requireClient])
 
   const value = useMemo(
     () => ({
