@@ -1,224 +1,361 @@
-import { createContext, useCallback, useContext, useMemo } from 'react'
-import { useLocalStorage } from '../hooks/useLocalStorage.js'
-import { createId } from '../utils/id.js'
-import { buildSeedData } from './seed.js'
-
-const STORAGE_KEY = 'terada_finance_state_v1'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { supabase } from '../lib/supabase.js'
+import { useAuth } from './AuthContext.jsx'
 
 const FinanceContext = createContext(null)
 
-const DEFAULT_CATEGORY_COLORS = [
-  '#ef4444', '#f97316', '#eab308', '#22c55e',
-  '#14b8a6', '#3b82f6', '#8b5cf6', '#ec4899', '#64748b',
-]
+/* ------------------------------- Mapeadores ------------------------------- */
+
+function mapSubcategory(row) {
+  return { id: row.id, name: row.name }
+}
+
+function mapCategory(row, subcategories) {
+  return { id: row.id, name: row.name, color: row.color, subcategories }
+}
+
+function mapExpense(row) {
+  return {
+    id: row.id,
+    description: row.description,
+    categoryId: row.category_id,
+    subcategoryId: row.subcategory_id,
+    expenseType: row.expense_type,
+    valueType: row.value_type,
+    plannedValue: Number(row.planned_value) || 0,
+    actualValue: Number(row.actual_value) || 0,
+    status: row.status,
+    referenceMonth: row.reference_month,
+    notes: row.notes ?? '',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
+}
 
 function normalizeExpense(expense) {
   const valueType = expense.valueType === 'fixo' ? 'fixo' : 'manual'
   const plannedValue = Number(expense.plannedValue) || 0
   const actualValue =
-    valueType === 'fixo'
-      ? plannedValue
-      : Number(expense.actualValue ?? expense.plannedValue) || 0
+    valueType === 'fixo' ? plannedValue : Number(expense.actualValue ?? expense.plannedValue) || 0
 
   return {
-    ...expense,
+    description: expense.description,
+    categoryId: expense.categoryId || null,
+    subcategoryId: expense.subcategoryId || null,
+    expenseType: expense.expenseType === 'fixa' ? 'fixa' : 'variavel',
     valueType,
     plannedValue,
     actualValue,
+    status: expense.status === 'pago' ? 'pago' : 'pendente',
+    referenceMonth: expense.referenceMonth,
+    notes: expense.notes ?? '',
   }
 }
 
+function toExpenseRecord(expense) {
+  const normalized = normalizeExpense(expense)
+  return {
+    description: normalized.description,
+    category_id: normalized.categoryId,
+    subcategory_id: normalized.subcategoryId,
+    expense_type: normalized.expenseType,
+    value_type: normalized.valueType,
+    planned_value: normalized.plannedValue,
+    actual_value: normalized.actualValue,
+    status: normalized.status,
+    reference_month: normalized.referenceMonth,
+    notes: normalized.notes,
+  }
+}
+
+function describeError(error) {
+  if (!error) return 'Ocorreu um erro inesperado.'
+  const message = error.message || String(error)
+  if (
+    error.code === '42P01' ||
+    error.code === 'PGRST205' ||
+    message.includes('Could not find the table') ||
+    message.includes('does not exist')
+  ) {
+    return 'Tabelas não encontradas no Supabase. Execute o script supabase/schema.sql no SQL Editor do seu projeto.'
+  }
+  if (message.includes('Invalid API key') || message.includes('JWT')) {
+    return 'Falha de autenticação com o Supabase. Verifique VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.'
+  }
+  return message
+}
+
 export function FinanceProvider({ children }) {
-  const [state, setState] = useLocalStorage(STORAGE_KEY, () => buildSeedData())
-  const categories = useMemo(() => state?.categories ?? [], [state])
-  const expenses = useMemo(() => state?.expenses ?? [], [state])
+  const { user } = useAuth()
+  const [categories, setCategories] = useState([])
+  const [expenses, setExpenses] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  const loadAll = useCallback(async () => {
+    if (!supabase || !user) {
+      setCategories([])
+      setExpenses([])
+      setLoading(false)
+      return
+    }
+
+    setLoading(true)
+    setError('')
+    try {
+      const [categoriesResult, subcategoriesResult, expensesResult] = await Promise.all([
+        supabase.from('categories').select('*').order('created_at', { ascending: true }),
+        supabase.from('subcategories').select('*').order('created_at', { ascending: true }),
+        supabase.from('expenses').select('*').order('created_at', { ascending: false }),
+      ])
+
+      if (categoriesResult.error) throw categoriesResult.error
+      if (subcategoriesResult.error) throw subcategoriesResult.error
+      if (expensesResult.error) throw expensesResult.error
+
+      const subsByCategory = new Map()
+      subcategoriesResult.data.forEach((row) => {
+        const list = subsByCategory.get(row.category_id) ?? []
+        list.push(mapSubcategory(row))
+        subsByCategory.set(row.category_id, list)
+      })
+
+      setCategories(
+        categoriesResult.data.map((row) => mapCategory(row, subsByCategory.get(row.id) ?? [])),
+      )
+      setExpenses(expensesResult.data.map(mapExpense))
+    } catch (err) {
+      console.error('[FinanceContext] loadAll:', err)
+      setError(describeError(err))
+    } finally {
+      setLoading(false)
+    }
+  }, [user])
+
+  useEffect(() => {
+    loadAll()
+  }, [loadAll])
 
   /* ----------------------------- Categorias ----------------------------- */
 
-  const addCategory = useCallback(
-    ({ name, color }) =>
-      setState((prev) => {
-        const category = {
-          id: createId('cat'),
-          name: name.trim(),
-          color: color || DEFAULT_CATEGORY_COLORS[prev.categories.length % DEFAULT_CATEGORY_COLORS.length],
-          subcategories: [],
-        }
-        return { ...prev, categories: [...prev.categories, category] }
-      }),
-    [setState],
-  )
+  const addCategory = useCallback(async ({ name, color }) => {
+    if (!supabase) return
+    const { data, error: err } = await supabase
+      .from('categories')
+      .insert({ name: name.trim(), color })
+      .select()
+      .single()
+    if (err) {
+      setError(describeError(err))
+      return
+    }
+    setCategories((prev) => [...prev, mapCategory(data, [])])
+  }, [])
 
-  const updateCategory = useCallback(
-    (categoryId, { name, color }) =>
-      setState((prev) => ({
-        ...prev,
-        categories: prev.categories.map((category) =>
-          category.id === categoryId
-            ? { ...category, name: name?.trim() ?? category.name, color: color ?? category.color }
-            : category,
-        ),
-      })),
-    [setState],
-  )
+  const updateCategory = useCallback(async (categoryId, { name, color }) => {
+    if (!supabase) return
+    const { data, error: err } = await supabase
+      .from('categories')
+      .update({ name: name?.trim(), color })
+      .eq('id', categoryId)
+      .select()
+      .single()
+    if (err) {
+      setError(describeError(err))
+      return
+    }
+    setCategories((prev) =>
+      prev.map((category) =>
+        category.id === categoryId
+          ? { ...category, name: data.name, color: data.color }
+          : category,
+      ),
+    )
+  }, [])
 
-  /** Remove a categoria e, em cascata, os lancamentos vinculados a ela. */
-  const deleteCategory = useCallback(
-    (categoryId) =>
-      setState((prev) => ({
-        ...prev,
-        categories: prev.categories.filter((category) => category.id !== categoryId),
-        expenses: prev.expenses.filter((expense) => expense.categoryId !== categoryId),
-      })),
-    [setState],
-  )
+  const deleteCategory = useCallback(async (categoryId) => {
+    if (!supabase) return
+    const { error: err } = await supabase.from('categories').delete().eq('id', categoryId)
+    if (err) {
+      setError(describeError(err))
+      return
+    }
+    setCategories((prev) => prev.filter((category) => category.id !== categoryId))
+    setExpenses((prev) => prev.filter((expense) => expense.categoryId !== categoryId))
+  }, [])
 
   /* ---------------------------- Subcategorias ---------------------------- */
 
-  const addSubcategory = useCallback(
-    (categoryId, name) =>
-      setState((prev) => ({
-        ...prev,
-        categories: prev.categories.map((category) =>
-          category.id === categoryId
-            ? {
-                ...category,
-                subcategories: [
-                  ...category.subcategories,
-                  { id: createId('sub'), name: name.trim() },
-                ],
-              }
-            : category,
-        ),
-      })),
-    [setState],
-  )
+  const addSubcategory = useCallback(async (categoryId, name) => {
+    if (!supabase) return
+    const { data, error: err } = await supabase
+      .from('subcategories')
+      .insert({ category_id: categoryId, name: name.trim() })
+      .select()
+      .single()
+    if (err) {
+      setError(describeError(err))
+      return
+    }
+    setCategories((prev) =>
+      prev.map((category) =>
+        category.id === categoryId
+          ? { ...category, subcategories: [...category.subcategories, mapSubcategory(data)] }
+          : category,
+      ),
+    )
+  }, [])
 
-  const updateSubcategory = useCallback(
-    (categoryId, subcategoryId, name) =>
-      setState((prev) => ({
-        ...prev,
-        categories: prev.categories.map((category) =>
-          category.id === categoryId
-            ? {
-                ...category,
-                subcategories: category.subcategories.map((sub) =>
-                  sub.id === subcategoryId ? { ...sub, name: name.trim() } : sub,
-                ),
-              }
-            : category,
-        ),
-      })),
-    [setState],
-  )
+  const updateSubcategory = useCallback(async (categoryId, subcategoryId, name) => {
+    if (!supabase) return
+    const { data, error: err } = await supabase
+      .from('subcategories')
+      .update({ name: name.trim() })
+      .eq('id', subcategoryId)
+      .select()
+      .single()
+    if (err) {
+      setError(describeError(err))
+      return
+    }
+    setCategories((prev) =>
+      prev.map((category) =>
+        category.id === categoryId
+          ? {
+              ...category,
+              subcategories: category.subcategories.map((sub) =>
+                sub.id === subcategoryId ? { ...sub, name: data.name } : sub,
+              ),
+            }
+          : category,
+      ),
+    )
+  }, [])
 
-  /** Remove a subcategoria. Lancamentos vinculados passam a ficar sem subcategoria. */
-  const deleteSubcategory = useCallback(
-    (categoryId, subcategoryId) =>
-      setState((prev) => ({
-        ...prev,
-        categories: prev.categories.map((category) =>
-          category.id === categoryId
-            ? {
-                ...category,
-                subcategories: category.subcategories.filter((sub) => sub.id !== subcategoryId),
-              }
-            : category,
-        ),
-        expenses: prev.expenses.map((expense) =>
-          expense.subcategoryId === subcategoryId
-            ? { ...expense, subcategoryId: null }
-            : expense,
-        ),
-      })),
-    [setState],
-  )
+  const deleteSubcategory = useCallback(async (categoryId, subcategoryId) => {
+    if (!supabase) return
+    const { error: err } = await supabase.from('subcategories').delete().eq('id', subcategoryId)
+    if (err) {
+      setError(describeError(err))
+      return
+    }
+    setCategories((prev) =>
+      prev.map((category) =>
+        category.id === categoryId
+          ? {
+              ...category,
+              subcategories: category.subcategories.filter((sub) => sub.id !== subcategoryId),
+            }
+          : category,
+      ),
+    )
+    setExpenses((prev) =>
+      prev.map((expense) =>
+        expense.subcategoryId === subcategoryId ? { ...expense, subcategoryId: null } : expense,
+      ),
+    )
+  }, [])
 
   /* ------------------------------ Lancamentos ---------------------------- */
 
-  const addExpense = useCallback(
-    (data) =>
-      setState((prev) => {
-        const now = new Date().toISOString()
-        const expense = normalizeExpense({
-          ...data,
-          id: createId('exp'),
-          createdAt: now,
-          updatedAt: now,
-        })
-        return { ...prev, expenses: [expense, ...prev.expenses] }
-      }),
-    [setState],
-  )
+  const addExpense = useCallback(async (data) => {
+    if (!supabase) return
+    const { data: row, error: err } = await supabase
+      .from('expenses')
+      .insert(toExpenseRecord(data))
+      .select()
+      .single()
+    if (err) {
+      setError(describeError(err))
+      return
+    }
+    setExpenses((prev) => [mapExpense(row), ...prev])
+  }, [])
 
-  const updateExpense = useCallback(
-    (expenseId, data) =>
-      setState((prev) => ({
-        ...prev,
-        expenses: prev.expenses.map((expense) =>
-          expense.id === expenseId
-            ? normalizeExpense({ ...expense, ...data, updatedAt: new Date().toISOString() })
-            : expense,
-        ),
-      })),
-    [setState],
-  )
+  const updateExpense = useCallback(async (expenseId, data) => {
+    if (!supabase) return
+    const { data: row, error: err } = await supabase
+      .from('expenses')
+      .update(toExpenseRecord(data))
+      .eq('id', expenseId)
+      .select()
+      .single()
+    if (err) {
+      setError(describeError(err))
+      return
+    }
+    setExpenses((prev) => prev.map((expense) => (expense.id === expenseId ? mapExpense(row) : expense)))
+  }, [])
 
-  const deleteExpense = useCallback(
-    (expenseId) =>
-      setState((prev) => ({
-        ...prev,
-        expenses: prev.expenses.filter((expense) => expense.id !== expenseId),
-      })),
-    [setState],
-  )
+  const deleteExpense = useCallback(async (expenseId) => {
+    if (!supabase) return
+    const { error: err } = await supabase.from('expenses').delete().eq('id', expenseId)
+    if (err) {
+      setError(describeError(err))
+      return
+    }
+    setExpenses((prev) => prev.filter((expense) => expense.id !== expenseId))
+  }, [])
 
   const toggleExpenseStatus = useCallback(
-    (expenseId) =>
-      setState((prev) => ({
-        ...prev,
-        expenses: prev.expenses.map((expense) =>
-          expense.id === expenseId
-            ? {
-                ...expense,
-                status: expense.status === 'pago' ? 'pendente' : 'pago',
-                updatedAt: new Date().toISOString(),
-              }
-            : expense,
-        ),
-      })),
-    [setState],
+    async (expenseId) => {
+      if (!supabase) return
+      const current = expenses.find((expense) => expense.id === expenseId)
+      if (!current) return
+      const nextStatus = current.status === 'pago' ? 'pendente' : 'pago'
+      const { data: row, error: err } = await supabase
+        .from('expenses')
+        .update({ status: nextStatus })
+        .eq('id', expenseId)
+        .select()
+        .single()
+      if (err) {
+        setError(describeError(err))
+        return
+      }
+      setExpenses((prev) =>
+        prev.map((expense) => (expense.id === expenseId ? mapExpense(row) : expense)),
+      )
+    },
+    [expenses],
   )
 
-  /** Duplica um lancamento para outro mes de referencia. */
   const duplicateExpense = useCallback(
-    (expenseId, targetMonth) =>
-      setState((prev) => {
-        const original = prev.expenses.find((expense) => expense.id === expenseId)
-        if (!original) return prev
-        const now = new Date().toISOString()
-        const copy = normalizeExpense({
-          ...original,
-          id: createId('exp'),
-          referenceMonth: targetMonth || original.referenceMonth,
-          status: 'pendente',
-          createdAt: now,
-          updatedAt: now,
-        })
-        return { ...prev, expenses: [copy, ...prev.expenses] }
-      }),
-    [setState],
+    async (expenseId, targetMonth) => {
+      if (!supabase) return
+      const original = expenses.find((expense) => expense.id === expenseId)
+      if (!original) return
+      const { data: row, error: err } = await supabase
+        .from('expenses')
+        .insert(
+          toExpenseRecord({
+            ...original,
+            referenceMonth: targetMonth || original.referenceMonth,
+            status: 'pendente',
+          }),
+        )
+        .select()
+        .single()
+      if (err) {
+        setError(describeError(err))
+        return
+      }
+      setExpenses((prev) => [mapExpense(row), ...prev])
+    },
+    [expenses],
   )
 
-  /* ------------------------- Reset / Limpeza total ------------------------ */
-
-  const clearAll = useCallback(() => {
-    setState({ categories: [], expenses: [] })
-  }, [setState])
-
-  const reloadExamples = useCallback(() => {
-    setState(buildSeedData())
-  }, [setState])
+  const clearAll = useCallback(async () => {
+    if (!supabase) return
+    const expensesResult = await supabase.from('expenses').delete().not('id', 'is', null)
+    const categoriesResult = await supabase.from('categories').delete().not('id', 'is', null)
+    if (expensesResult.error || categoriesResult.error) {
+      setError(describeError(expensesResult.error || categoriesResult.error))
+      return
+    }
+    setExpenses([])
+    setCategories([])
+  }, [])
 
   /* ------------------------------- Lookups ------------------------------- */
 
@@ -243,6 +380,10 @@ export function FinanceProvider({ children }) {
     () => ({
       categories,
       expenses,
+      loading,
+      error,
+      setError,
+      refresh: loadAll,
       addCategory,
       updateCategory,
       deleteCategory,
@@ -255,14 +396,15 @@ export function FinanceProvider({ children }) {
       toggleExpenseStatus,
       duplicateExpense,
       clearAll,
-      reloadExamples,
       getCategory,
       getSubcategory,
-      DEFAULT_CATEGORY_COLORS,
     }),
     [
       categories,
       expenses,
+      loading,
+      error,
+      loadAll,
       addCategory,
       updateCategory,
       deleteCategory,
@@ -275,7 +417,6 @@ export function FinanceProvider({ children }) {
       toggleExpenseStatus,
       duplicateExpense,
       clearAll,
-      reloadExamples,
       getCategory,
       getSubcategory,
     ],

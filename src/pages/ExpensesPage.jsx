@@ -5,6 +5,8 @@ import { useFinance } from '../context/FinanceContext.jsx'
 import ExpenseTable from '../components/expenses/ExpenseTable.jsx'
 import ExpenseModal from '../components/expenses/ExpenseModal.jsx'
 import ConfirmDialog from '../components/common/ConfirmDialog.jsx'
+import ErrorBanner from '../components/common/ErrorBanner.jsx'
+import LoadingBlock from '../components/common/LoadingBlock.jsx'
 import PageHeader from '../components/common/PageHeader.jsx'
 import { formatMonthLabel, getCurrentMonth } from '../utils/format.js'
 import { listMonths } from '../utils/analytics.js'
@@ -13,6 +15,9 @@ export default function ExpensesPage() {
   const {
     categories,
     expenses,
+    loading,
+    error,
+    setError,
     addExpense,
     updateExpense,
     deleteExpense,
@@ -69,51 +74,59 @@ export default function ExpensesPage() {
         }
       />
 
-      {categories.length === 0 && (
-        <div className="flex items-start gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-200">
-          <AlertCircle size={18} className="mt-0.5 shrink-0" />
-          <p>
-            Você ainda não possui categorias. Crie ao menos uma categoria em{' '}
-            <Link to="/categorias" className="font-semibold text-amber-100 underline">
-              Categorias
-            </Link>{' '}
-            para começar a lançar despesas.
-          </p>
-        </div>
+      <ErrorBanner message={error} onClose={() => setError('')} />
+
+      {loading ? (
+        <LoadingBlock label="Carregando lançamentos..." />
+      ) : (
+        <>
+          {categories.length === 0 && (
+            <div className="flex items-start gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-200">
+              <AlertCircle size={18} className="mt-0.5 shrink-0" />
+              <p>
+                Você ainda não possui categorias. Crie ao menos uma categoria em{' '}
+                <Link to="/categorias" className="font-semibold text-amber-100 underline">
+                  Categorias
+                </Link>{' '}
+                para começar a lançar despesas.
+              </p>
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 rounded-xl border border-brand-border bg-brand-surface/70 px-3 py-2">
+              <CalendarDays size={16} className="text-brand-redBright" />
+              <select
+                className="bg-transparent text-sm font-medium text-slate-200 outline-none"
+                value={month}
+                onChange={(event) => setMonth(event.target.value)}
+              >
+                <option value="all" className="bg-brand-surface">
+                  Todos os meses
+                </option>
+                {monthOptions.map((monthKey) => (
+                  <option key={monthKey} value={monthKey} className="bg-brand-surface">
+                    {formatMonthLabel(monthKey)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <span className="text-sm text-slate-400">
+              {month === 'all' ? 'Exibindo todos os meses' : `Exibindo ${formatMonthLabel(month)}`}
+            </span>
+          </div>
+
+          <ExpenseTable
+            expenses={visibleExpenses}
+            categories={categories}
+            getSubcategory={getSubcategory}
+            onEdit={openEdit}
+            onDelete={setPendingDelete}
+            onToggle={toggleExpenseStatus}
+            onDuplicate={(id, targetMonth) => duplicateExpense(id, targetMonth)}
+          />
+        </>
       )}
-
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 rounded-xl border border-brand-border bg-brand-surface/70 px-3 py-2">
-          <CalendarDays size={16} className="text-brand-redBright" />
-          <select
-            className="bg-transparent text-sm font-medium text-slate-200 outline-none"
-            value={month}
-            onChange={(event) => setMonth(event.target.value)}
-          >
-            <option value="all" className="bg-brand-surface">
-              Todos os meses
-            </option>
-            {monthOptions.map((monthKey) => (
-              <option key={monthKey} value={monthKey} className="bg-brand-surface">
-                {formatMonthLabel(monthKey)}
-              </option>
-            ))}
-          </select>
-        </div>
-        <span className="text-sm text-slate-400">
-          {month === 'all' ? 'Exibindo todos os meses' : `Exibindo ${formatMonthLabel(month)}`}
-        </span>
-      </div>
-
-      <ExpenseTable
-        expenses={visibleExpenses}
-        categories={categories}
-        getSubcategory={getSubcategory}
-        onEdit={openEdit}
-        onDelete={setPendingDelete}
-        onToggle={toggleExpenseStatus}
-        onDuplicate={(id, targetMonth) => duplicateExpense(id, targetMonth)}
-      />
 
       <ExpenseModal
         open={modalOpen}

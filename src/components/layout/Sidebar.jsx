@@ -5,9 +5,12 @@ import {
   Tags,
   BarChart3,
   Wallet,
+  LogOut,
+  User,
 } from 'lucide-react'
 import clsx from 'clsx'
 import Logo from '../common/Logo.jsx'
+import { useAuth } from '../../context/AuthContext.jsx'
 
 export const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -17,6 +20,8 @@ export const NAV_ITEMS = [
 ]
 
 export default function Sidebar({ onNavigate }) {
+  const { user, signOut } = useAuth()
+
   return (
     <div className="flex h-full flex-col gap-6 p-5">
       <Logo />
@@ -53,14 +58,26 @@ export default function Sidebar({ onNavigate }) {
         ))}
       </nav>
 
-      <div className="rounded-2xl border border-brand-border bg-gradient-to-br from-brand-redDark/25 to-transparent p-4">
+      <div className="space-y-3 rounded-2xl border border-brand-border bg-gradient-to-br from-brand-redDark/25 to-transparent p-4">
         <div className="flex items-center gap-2 text-brand-redBright">
           <Wallet size={18} />
           <span className="text-sm font-bold text-white">Terada Finance</span>
         </div>
-        <p className="mt-1.5 text-xs leading-relaxed text-slate-400">
-          Gerencie suas despesas fixas e variáveis de forma 100% personalizada.
-        </p>
+        <div className="flex items-center gap-2 rounded-xl border border-brand-border bg-brand-elevated/50 px-3 py-2">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-red/15 text-brand-redBright">
+            <User size={14} />
+          </span>
+          <span className="truncate text-xs text-slate-300" title={user?.email}>
+            {user?.email ?? 'Sessão ativa'}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={signOut}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-brand-redDark/50 bg-brand-redDark/15 px-3 py-2 text-sm font-semibold text-brand-redBright transition hover:bg-brand-redDark/30"
+        >
+          <LogOut size={15} /> Sair da conta
+        </button>
       </div>
     </div>
   )

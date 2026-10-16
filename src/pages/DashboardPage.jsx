@@ -9,6 +9,8 @@ import ExpenseTable from '../components/expenses/ExpenseTable.jsx'
 import ExpenseModal from '../components/expenses/ExpenseModal.jsx'
 import ConfirmDialog from '../components/common/ConfirmDialog.jsx'
 import EmptyState from '../components/common/EmptyState.jsx'
+import ErrorBanner from '../components/common/ErrorBanner.jsx'
+import LoadingBlock from '../components/common/LoadingBlock.jsx'
 import MonthNavigator from '../components/common/MonthNavigator.jsx'
 import PageHeader from '../components/common/PageHeader.jsx'
 import { getCurrentMonth, previousMonth } from '../utils/format.js'
@@ -24,6 +26,9 @@ export default function DashboardPage() {
   const {
     categories,
     expenses,
+    loading,
+    error,
+    setError,
     addExpense,
     updateExpense,
     deleteExpense,
@@ -89,7 +94,11 @@ export default function DashboardPage() {
         }
       />
 
-      {categories.length === 0 ? (
+      <ErrorBanner message={error} onClose={() => setError('')} />
+
+      {loading ? (
+        <LoadingBlock label="Carregando seu painel..." />
+      ) : categories.length === 0 ? (
         <EmptyState
           icon={Tags}
           title="Comece configurando suas categorias"

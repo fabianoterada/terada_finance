@@ -13,6 +13,8 @@ import clsx from 'clsx'
 import { useFinance } from '../context/FinanceContext.jsx'
 import PageHeader from '../components/common/PageHeader.jsx'
 import EmptyState from '../components/common/EmptyState.jsx'
+import ErrorBanner from '../components/common/ErrorBanner.jsx'
+import LoadingBlock from '../components/common/LoadingBlock.jsx'
 import { addMonths, formatCurrency, formatMonthLabel, formatMonthShort, getCurrentMonth, monthRange } from '../utils/format.js'
 import { aggregateByCategory, computeTotals } from '../utils/analytics.js'
 
@@ -48,7 +50,7 @@ function SummaryPill({ label, value, tone }) {
 }
 
 export default function ReportsPage() {
-  const { categories, expenses, getSubcategory } = useFinance()
+  const { categories, expenses, loading, error, setError, getSubcategory } = useFinance()
 
   const current = getCurrentMonth()
   const [startMonth, setStartMonth] = useState(addMonths(current, -5))
@@ -173,6 +175,8 @@ export default function ReportsPage() {
         }
       />
 
+      <ErrorBanner message={error} onClose={() => setError('')} />
+
       <div className="card p-5">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <div>
@@ -269,7 +273,9 @@ export default function ReportsPage() {
         <SummaryPill label="Pendente" value={formatCurrency(totals.pending)} tone="negative" />
       </div>
 
-      {filtered.length === 0 ? (
+      {loading ? (
+        <LoadingBlock label="Carregando relatórios..." />
+      ) : filtered.length === 0 ? (
         <EmptyState
           icon={BarChart3}
           title="Nenhum lançamento no período"
