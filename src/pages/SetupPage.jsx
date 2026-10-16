@@ -5,8 +5,9 @@ const steps = [
   {
     icon: KeyRound,
     title: '1. Configure as variáveis de ambiente',
-    code: 'VITE_SUPABASE_URL=https://SEU-PROJETO.supabase.co\nVITE_SUPABASE_ANON_KEY=sua-chave-anon',
-    description: 'Crie um arquivo .env na raiz do projeto com as chaves do seu projeto Supabase.',
+    code: 'VITE_SUPABASE_URL=https://SEU-PROJETO.supabase.co\nVITE_SUPABASE_ANON_KEY=sua-chave-publicavel',
+    description:
+      'Crie um arquivo .env na raiz do projeto. Também aceitamos NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.',
   },
   {
     icon: Database,
