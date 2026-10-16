@@ -30,7 +30,7 @@ function LogoMark() {
               src="/logo_transparente.jpeg"
               alt=""
               onError={() => setFailed(true)}
-              className="h-full w-full object-contain p-0.5"
+              className="h-full w-full object-contain"
             />
           )}
         </span>
@@ -181,15 +181,17 @@ export default function LoginPage() {
             />
           </div>
 
-          <label className="flex select-none items-center gap-2 text-sm text-login-subtle">
-            <input
-              type="checkbox"
-              checked={remember}
-              onChange={(event) => setRemember(event.target.checked)}
-              className="h-4 w-4 rounded border-login-border accent-login-primary"
-            />
-            Lembrar-me
-          </label>
+          {mode === 'signin' && (
+            <label className="flex select-none items-center gap-2 text-sm text-login-subtle">
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(event) => setRemember(event.target.checked)}
+                className="h-4 w-4 rounded border-login-border accent-login-primary"
+              />
+              Lembrar-me
+            </label>
+          )}
 
           {formError && <p className="alert-error">{formError}</p>}
           {info && <p className="alert-success">{info}</p>}
