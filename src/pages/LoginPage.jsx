@@ -1,9 +1,9 @@
-import { useState } from 'react'
-import { LogIn, Mail, Lock, UserPlus } from 'lucide-react'
-import clsx from 'clsx'
-import Logo from '../components/common/Logo.jsx'
+import { useEffect, useState } from 'react'
+import { LogIn, UserPlus, Wallet } from 'lucide-react'
 import Spinner from '../components/common/Spinner.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
+
+const REMEMBER_KEY = 'terada_fi…mail'
 
 function translateAuthError(error) {
   const message = error?.message ?? 'Não foi possível concluir a operação.'
@@ -16,14 +16,65 @@ function translateAuthError(error) {
   return message
 }
 
+function LogoMark() {
+  const [failed, setFailed] = useState(false)
+
+  return (
+    <div className="flex flex-col items-center text-center">
+      <div className="flex items-center gap-2">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md border border-login-borderSoft bg-login-primarySoft">
+          {failed ? (
+            <Wallet size={17} className="text-login-primary" aria-hidden="true" />
+          ) : (
+            <img
+              src="/logo_transparente.jpeg"
+              alt=""
+              onError={() => setFailed(true)}
+              className="h-full w-full object-contain"
+            />
+          )}
+        </span>
+        <p className="text-lg font-bold leading-none tracking-tight">
+          <span className="text-login-heading">TERADA</span>{' '}
+          <span className="text-login-primary">FINANCE</span>
+        </p>
+      </div>
+      <p className="mt-1.5 text-xs uppercase tracking-wide text-login-muted">Controle de Despesas</p>
+    </div>
+  )
+}
+
 export default function LoginPage() {
-  const { signIn, signUp } = useAuth()
+  const { signIn, signUp, resetPassword } = useAuth()
   const [mode, setMode] = useState('signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [remember, setRemember] = useState(false)
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState('')
   const [info, setInfo] = useState('')
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem(REMEMBER_KEY)
+    if (saved) {
+      setEmail(saved)
+      setRemember(true)
+    }
+  }, [])
+
+  function switchMode(nextMode) {
+    setMode(nextMode)
+    setFormError('')
+    setInfo('')
+  }
+
+  function persistRememberChoice() {
+    if (remember) {
+      window.localStorage.setItem(REMEMBER_KEY, email.trim())
+    } else {
+      window.localStorage.removeItem(REMEMBER_KEY)
+    }
+  }
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -37,13 +88,14 @@ export default function LoginPage() {
     try {
       if (mode === 'signin') {
         await signIn(email.trim(), password)
+        persistRememberChoice()
       } else {
         const data = await signUp(email.trim(), password)
         if (!data.session) {
           setInfo(
             'Cadastro realizado! Confirme seu e-mail (se a confirmação estiver ativa) e faça login.',
           )
-          setMode('signin')
+          switchMode('signin')
         }
       }
     } catch (error) {
@@ -53,128 +105,120 @@ export default function LoginPage() {
     }
   }
 
+  async function handleForgotPassword() {
+    setFormError('')
+    setInfo('')
+    if (!email.trim()) {
+      setFormError('Digite seu e-mail para receber o link de recuperação.')
+      return
+    }
+    setBusy(true)
+    try {
+      await resetPassword(email.trim())
+      setInfo('Se o e-mail estiver cadastrado, enviaremos um link de recuperação.')
+    } catch (error) {
+      setFormError(translateAuthError(error))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
-    <div className="flex min-h-screen items-stretch">
-      <div className="hidden flex-1 flex-col justify-between border-r border-brand-border bg-brand-surface/50 p-10 lg:flex">
-        <Logo />
-        <div>
-          <h1 className="text-4xl font-extrabold leading-tight text-white">
-            Controle total das suas <span className="text-brand-redBright">despesas</span>.
-          </h1>
-          <p className="mt-4 max-w-md text-slate-400">
-            Cadastre categorias, lance despesas fixas e variáveis, acompanhe indicadores e compare a
-            evolução mês a mês — tudo sincronizado com o Supabase.
-          </p>
-        </div>
-        <p className="text-xs text-slate-600">Terada Finance · Gestão de gastos pessoais</p>
-      </div>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-login-bg px-4 py-10">
+      <main className="w-full max-w-md rounded-xl bg-login-card p-8 shadow-lg">
+        <header className="flex flex-col items-center text-center">
+          <LogoMark />
+        </header>
 
-      <div className="flex w-full flex-col items-center justify-center px-5 py-10 lg:max-w-xl">
-        <div className="w-full max-w-sm">
-          <div className="mb-8 lg:hidden">
-            <Logo />
+        <h1 className="mt-6 text-2xl font-bold text-login-heading">
+          {mode === 'signin' ? 'Acesse sua conta' : 'Crie sua conta'}
+        </h1>
+        <p className="mt-1 text-sm text-login-muted">
+          {mode === 'signin'
+            ? 'Insira suas credenciais para gerenciar suas finanças'
+            : 'Comece agora a organizar seus gastos'}
+        </p>
+
+        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-login-heading" htmlFor="login-email">
+              E-mail
+            </label>
+            <input
+              id="login-email"
+              type="email"
+              autoComplete="email"
+              className="input-light"
+              placeholder="exemplo@email.com"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
           </div>
 
-          <h2 className="text-2xl font-bold text-white">
-            {mode === 'signin' ? 'Entrar na sua conta' : 'Criar uma conta'}
-          </h2>
-          <p className="mt-1 text-sm text-slate-400">
-            {mode === 'signin'
-              ? 'Acesse para gerenciar seus lançamentos.'
-              : 'Cadastre-se para começar a organizar seus gastos.'}
-          </p>
-
-          <div className="mt-6 grid grid-cols-2 rounded-xl border border-brand-border bg-brand-elevated/40 p-1">
-            <button
-              type="button"
-              onClick={() => {
-                setMode('signin')
-                setFormError('')
-                setInfo('')
-              }}
-              className={clsx(
-                'rounded-lg py-2 text-sm font-semibold transition',
-                mode === 'signin' ? 'bg-brand-red text-white' : 'text-slate-400 hover:text-white',
-              )}
-            >
-              Entrar
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMode('signup')
-                setFormError('')
-                setInfo('')
-              }}
-              className={clsx(
-                'rounded-lg py-2 text-sm font-semibold transition',
-                mode === 'signup' ? 'bg-brand-red text-white' : 'text-slate-400 hover:text-white',
-              )}
-            >
-              Criar conta
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-            <div>
-              <label className="label" htmlFor="login-email">
-                E-mail
-              </label>
-              <div className="relative">
-                <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input
-                  id="login-email"
-                  type="email"
-                  autoComplete="email"
-                  className="input pl-10"
-                  placeholder="voce@email.com"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                />
-              </div>
-            </div>
-            <div>
-              <label className="label" htmlFor="login-password">
+          <div>
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="text-sm font-medium text-login-heading" htmlFor="login-password">
                 Senha
               </label>
-              <div className="relative">
-                <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input
-                  id="login-password"
-                  type="password"
-                  autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-                  className="input pl-10"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-              </div>
-            </div>
-
-            {formError && (
-              <p className="rounded-lg border border-brand-redDark/50 bg-brand-redDark/20 px-3 py-2 text-sm text-brand-redBright">
-                {formError}
-              </p>
-            )}
-            {info && (
-              <p className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-400">
-                {info}
-              </p>
-            )}
-
-            <button type="submit" className="btn-primary w-full" disabled={busy}>
-              {busy ? (
-                <Spinner size={18} className="border-white/40 border-t-white" />
-              ) : mode === 'signin' ? (
-                <LogIn size={16} />
-              ) : (
-                <UserPlus size={16} />
+              {mode === 'signin' && (
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  className="link-primary text-sm"
+                >
+                  Esqueceu a senha?
+                </button>
               )}
-              {mode === 'signin' ? 'Entrar' : 'Criar conta'}
-            </button>
-          </form>
-        </div>
-      </div>
+            </div>
+            <input
+              id="login-password"
+              type="password"
+              autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+              className="input-light"
+              placeholder="Digite sua senha"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </div>
+
+          {mode === 'signin' && (
+            <label className="flex select-none items-center gap-2 text-sm text-login-subtle">
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(event) => setRemember(event.target.checked)}
+                className="h-4 w-4 rounded border-login-border accent-login-primary"
+              />
+              Lembrar-me
+            </label>
+          )}
+
+          {formError && <p className="alert-error">{formError}</p>}
+          {info && <p className="alert-success">{info}</p>}
+
+          <button type="submit" className="btn-cta" disabled={busy}>
+            {busy ? (
+              <Spinner size={18} className="border-white/40 border-t-white" />
+            ) : mode === 'signin' ? (
+              <LogIn size={16} />
+            ) : (
+              <UserPlus size={16} />
+            )}
+            {mode === 'signin' ? 'Entrar' : 'Criar conta'}
+          </button>
+        </form>
+
+        <p className="mt-6 text-center text-sm text-login-muted">
+          {mode === 'signin' ? 'Não tem uma conta? ' : 'Já tem uma conta? '}
+          <button
+            type="button"
+            onClick={() => switchMode(mode === 'signin' ? 'signup' : 'signin')}
+            className="link-primary"
+          >
+            {mode === 'signin' ? 'Cadastre-se' : 'Entrar'}
+          </button>
+        </p>
+      </main>
     </div>
   )
 }
