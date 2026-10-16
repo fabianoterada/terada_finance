@@ -84,4 +84,21 @@
   .badge {
     @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold;
   }
+
+  .input-light {
+    @apply w-full rounded-md border border-login-border bg-login-card px-3.5 py-2.5 text-sm
+      text-login-heading placeholder:text-login-muted/80 outline-none transition
+      focus:border-login-primaryRing focus:ring-2 focus:ring-login-primaryRing/30;
+  }
+
+  .btn-cta {
+    @apply inline-flex w-full items-center justify-center gap-2 rounded-md bg-login-primary px-4 py-2.5
+      text-sm font-semibold text-login-onPrimary shadow-cta transition
+      hover:bg-login-primaryHover hover:shadow-ctaHover active:scale-[0.99]
+      disabled:opacity-60 disabled:pointer-events-none;
+  }
+
+  .link-primary {
+    @apply font-medium text-login-primary transition hover:text-login-primaryHover hover:underline;
+  }
 }
