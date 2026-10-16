@@ -4,6 +4,7 @@ import {
   Receipt,
   Tags,
   BarChart3,
+  Users,
   Wallet,
   LogOut,
   User,
@@ -17,17 +18,19 @@ export const NAV_ITEMS = [
   { to: '/lancamentos', label: 'Lançamentos', icon: Receipt },
   { to: '/categorias', label: 'Categorias', icon: Tags },
   { to: '/relatorios', label: 'Relatórios', icon: BarChart3 },
+  { to: '/usuarios', label: 'Usuários', icon: Users, adminOnly: true },
 ]
 
 export default function Sidebar({ onNavigate }) {
-  const { user, signOut } = useAuth()
+  const { user, profile, isAdmin, signOut } = useAuth()
+  const items = NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin)
 
   return (
     <div className="flex h-full flex-col gap-6 p-5">
       <Logo />
 
       <nav className="flex flex-1 flex-col gap-1.5">
-        {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
+        {items.map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}
@@ -68,7 +71,7 @@ export default function Sidebar({ onNavigate }) {
             <User size={14} />
           </span>
           <span className="truncate text-xs text-slate-300" title={user?.email}>
-            {user?.email ?? 'Sessão ativa'}
+            {profile?.full_name?.trim() || user?.email || 'Sessão ativa'}
           </span>
         </div>
         <button

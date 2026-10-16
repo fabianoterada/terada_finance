@@ -1,103 +1,37 @@
-import { useEffect, useState } from 'react'
-import { LogIn, UserPlus, Wallet } from 'lucide-react'
+import { useState } from 'react'
+import { LogIn, Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import Spinner from '../components/common/Spinner.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
-
-const REMEMBER_KEY = 'terada_fi…mail'
 
 function translateAuthError(error) {
   const message = error?.message ?? 'Não foi possível concluir a operação.'
   if (message.includes('Invalid login credentials')) return 'E-mail ou senha inválidos.'
   if (message.includes('Email not confirmed')) return 'E-mail ainda não confirmado. Verifique sua caixa de entrada.'
-  if (message.includes('User already registered')) return 'Este e-mail já está cadastrado.'
-  if (message.includes('Password should be at least')) return 'A senha deve ter ao menos 6 caracteres.'
   if (message.includes('Unable to validate email')) return 'Endereço de e-mail inválido.'
   if (message.includes('rate limit') || message.includes('too many')) return 'Muitas tentativas. Aguarde alguns instantes.'
   return message
 }
 
-function LogoMark() {
-  const [failed, setFailed] = useState(false)
-
-  return (
-    <div className="flex flex-col items-center text-center">
-      <div className="flex items-center gap-2">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md border border-login-borderSoft bg-login-primarySoft">
-          {failed ? (
-            <Wallet size={17} className="text-login-primary" aria-hidden="true" />
-          ) : (
-            <img
-              src="/logo_transparente.jpeg"
-              alt=""
-              onError={() => setFailed(true)}
-              className="h-full w-full object-contain"
-            />
-          )}
-        </span>
-        <p className="text-lg font-bold leading-none tracking-tight">
-          <span className="text-login-heading">TERADA</span>{' '}
-          <span className="text-login-primary">FINANCE</span>
-        </p>
-      </div>
-      <p className="mt-1.5 text-xs uppercase tracking-wide text-login-muted">Controle de Despesas</p>
-    </div>
-  )
-}
-
 export default function LoginPage() {
-  const { signIn, signUp, resetPassword } = useAuth()
-  const [mode, setMode] = useState('signin')
+  const { signIn } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [remember, setRemember] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState('')
   const [info, setInfo] = useState('')
 
-  useEffect(() => {
-    const saved = window.localStorage.getItem(REMEMBER_KEY)
-    if (saved) {
-      setEmail(saved)
-      setRemember(true)
-    }
-  }, [])
-
-  function switchMode(nextMode) {
-    setMode(nextMode)
-    setFormError('')
-    setInfo('')
-  }
-
-  function persistRememberChoice() {
-    if (remember) {
-      window.localStorage.setItem(REMEMBER_KEY, email.trim())
-    } else {
-      window.localStorage.removeItem(REMEMBER_KEY)
-    }
-  }
-
   async function handleSubmit(event) {
     event.preventDefault()
+    setInfo('')
     if (!email.trim() || !password) {
       setFormError('Informe e-mail e senha.')
       return
     }
     setBusy(true)
     setFormError('')
-    setInfo('')
     try {
-      if (mode === 'signin') {
-        await signIn(email.trim(), password)
-        persistRememberChoice()
-      } else {
-        const data = await signUp(email.trim(), password)
-        if (!data.session) {
-          setInfo(
-            'Cadastro realizado! Confirme seu e-mail (se a confirmação estiver ativa) e faça login.',
-          )
-          switchMode('signin')
-        }
-      }
+      await signIn(email.trim(), password)
     } catch (error) {
       setFormError(translateAuthError(error))
     } finally {
@@ -105,120 +39,133 @@ export default function LoginPage() {
     }
   }
 
-  async function handleForgotPassword() {
+  function handleForgot() {
     setFormError('')
-    setInfo('')
-    if (!email.trim()) {
-      setFormError('Digite seu e-mail para receber o link de recuperação.')
-      return
-    }
-    setBusy(true)
-    try {
-      await resetPassword(email.trim())
-      setInfo('Se o e-mail estiver cadastrado, enviaremos um link de recuperação.')
-    } catch (error) {
-      setFormError(translateAuthError(error))
-    } finally {
-      setBusy(false)
-    }
+    setInfo('Para redefinir sua senha, solicite ao administrador do sistema.')
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-login-bg px-4 py-10">
-      <main className="w-full max-w-md rounded-xl bg-login-card p-8 shadow-lg">
-        <header className="flex flex-col items-center text-center">
-          <LogoMark />
-        </header>
+    <div className="relative min-h-screen w-full overflow-hidden bg-slate-900">
+      <div
+        className="absolute inset-0"
+        style={{
+          backgroundImage: "url('/fundo_terada.jpg')",
+          backgroundSize: 'cover',
+          backgroundPosition: 'right center',
+          backgroundRepeat: 'no-repeat',
+        }}
+      />
+      <div className="absolute inset-0 bg-gradient-to-r from-slate-950/60 via-slate-950/20 to-transparent" />
 
-        <h1 className="mt-6 text-2xl font-bold text-login-heading">
-          {mode === 'signin' ? 'Acesse sua conta' : 'Crie sua conta'}
-        </h1>
-        <p className="mt-1 text-sm text-login-muted">
-          {mode === 'signin'
-            ? 'Insira suas credenciais para gerenciar suas finanças'
-            : 'Comece agora a organizar seus gastos'}
-        </p>
-
-        <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-login-heading" htmlFor="login-email">
-              E-mail
-            </label>
-            <input
-              id="login-email"
-              type="email"
-              autoComplete="email"
-              className="input-light"
-              placeholder="exemplo@email.com"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-            />
+      <div className="relative z-10 flex min-h-screen items-center justify-center px-5 py-10 lg:justify-start lg:pl-24">
+        <div className="w-full max-w-md animate-scale-in rounded-3xl border border-white/60 bg-white/85 p-7 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.6)] backdrop-blur-xl sm:p-9">
+          <div className="flex items-center gap-3">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-brand-red/30 bg-white shadow-glow">
+              <img
+                src="/logo_transparente.jpeg"
+                alt="Terada Finance"
+                className="h-full w-full object-contain p-1"
+                onError={(event) => {
+                  event.currentTarget.style.display = 'none'
+                }}
+              />
+            </span>
+            <div className="leading-tight">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-brand-red">
+                Terada Finance
+              </p>
+              <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">Acessar Sistema</h1>
+            </div>
           </div>
 
-          <div>
-            <div className="mb-1.5 flex items-center justify-between">
-              <label className="text-sm font-medium text-login-heading" htmlFor="login-password">
+          <p className="mt-5 text-sm text-slate-600">
+            Bem-vindo! Informe seu e-mail ou usuário e a senha para entrar.
+          </p>
+
+          <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500" htmlFor="login-email">
+                E-mail ou Usuário
+              </label>
+              <div className="relative">
+                <Mail size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  id="login-email"
+                  type="text"
+                  autoComplete="username"
+                  className="input-light pl-10"
+                  placeholder="voce@email.com"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500" htmlFor="login-password">
                 Senha
               </label>
-              {mode === 'signin' && (
+              <div className="relative">
+                <Lock size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  id="login-password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  className="input-light pl-10 pr-10"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
                 <button
                   type="button"
-                  onClick={handleForgotPassword}
-                  className="link-primary text-sm"
+                  onClick={() => setShowPassword((value) => !value)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
+                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
                 >
-                  Esqueceu a senha?
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
-              )}
+              </div>
+              <div className="mt-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleForgot}
+                  className="text-xs font-medium text-slate-500 transition hover:text-brand-red"
+                >
+                  Esqueci minha senha
+                </button>
+              </div>
             </div>
-            <input
-              id="login-password"
-              type="password"
-              autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-              className="input-light"
-              placeholder="Digite sua senha"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-            />
-          </div>
 
-          {mode === 'signin' && (
-            <label className="flex select-none items-center gap-2 text-sm text-login-subtle">
-              <input
-                type="checkbox"
-                checked={remember}
-                onChange={(event) => setRemember(event.target.checked)}
-                className="h-4 w-4 rounded border-login-border accent-login-primary"
-              />
-              Lembrar-me
-            </label>
-          )}
-
-          {formError && <p className="alert-error">{formError}</p>}
-          {info && <p className="alert-success">{info}</p>}
-
-          <button type="submit" className="btn-cta" disabled={busy}>
-            {busy ? (
-              <Spinner size={18} className="border-white/40 border-t-white" />
-            ) : mode === 'signin' ? (
-              <LogIn size={16} />
-            ) : (
-              <UserPlus size={16} />
+            {formError && (
+              <p className="rounded-xl border border-brand-red/30 bg-brand-red/10 px-3 py-2 text-sm text-brand-red">
+                {formError}
+              </p>
             )}
-            {mode === 'signin' ? 'Entrar' : 'Criar conta'}
-          </button>
-        </form>
+            {info && (
+              <p className="rounded-xl border border-slate-300 bg-slate-100/70 px-3 py-2 text-sm text-slate-600">
+                {info}
+              </p>
+            )}
 
-        <p className="mt-6 text-center text-sm text-login-muted">
-          {mode === 'signin' ? 'Não tem uma conta? ' : 'Já tem uma conta? '}
-          <button
-            type="button"
-            onClick={() => switchMode(mode === 'signin' ? 'signup' : 'signin')}
-            className="link-primary"
-          >
-            {mode === 'signin' ? 'Cadastre-se' : 'Entrar'}
-          </button>
-        </p>
-      </main>
+            <button
+              type="submit"
+              disabled={busy}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-red py-3 text-sm font-semibold text-white shadow-glow transition hover:bg-brand-redBright active:scale-[0.99] disabled:opacity-60"
+            >
+              {busy ? (
+                <Spinner size={18} className="border-white/40 border-t-white" />
+              ) : (
+                <LogIn size={16} />
+              )}
+              Entrar
+            </button>
+          </form>
+
+          <p className="mt-6 text-center text-xs text-slate-400">
+            Acesso restrito. O cadastro de novos usuários é feito pelo administrador.
+          </p>
+        </div>
+      </div>
     </div>
   )
 }

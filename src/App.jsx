@@ -8,6 +8,7 @@ import DashboardPage from './pages/DashboardPage.jsx'
 import ExpensesPage from './pages/ExpensesPage.jsx'
 import CategoriesPage from './pages/CategoriesPage.jsx'
 import ReportsPage from './pages/ReportsPage.jsx'
+import UsersPage from './pages/UsersPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import SetupPage from './pages/SetupPage.jsx'
 
@@ -34,6 +35,7 @@ export default function App() {
         <Route path="lancamentos" element={<ExpensesPage />} />
         <Route path="categorias" element={<CategoriesPage />} />
         <Route path="relatorios" element={<ReportsPage />} />
+        <Route path="usuarios" element={<UsersPage />} />
       </Route>
       <Route path="*" element={<Navigate to={session ? '/' : '/login'} replace />} />
     </Routes>
