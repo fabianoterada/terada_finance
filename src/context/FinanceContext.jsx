@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useAuth } from './AuthContext.jsx'
+import { addMonths } from '../utils/format.js'
 
 const FinanceContext = createContext(null)
 
@@ -322,25 +323,39 @@ export function FinanceProvider({ children }) {
 
   const duplicateExpense = useCallback(
     async (expenseId, targetMonth) => {
-      if (!supabase) return
+      if (!supabase) {
+        throw new Error('Supabase não está configurado para duplicar lançamentos.')
+      }
+
       const original = expenses.find((expense) => expense.id === expenseId)
-      if (!original) return
+      if (!original) {
+        throw new Error('Lançamento original não encontrado para duplicação.')
+      }
+
+      const nextMonth =
+        typeof targetMonth === 'string' && /^\d{4}-\d{2}$/.test(targetMonth)
+          ? targetMonth
+          : addMonths(original.referenceMonth, 1)
+
       const { data: row, error: err } = await supabase
         .from('expenses')
         .insert(
           toExpenseRecord({
             ...original,
-            referenceMonth: targetMonth || original.referenceMonth,
+            referenceMonth: nextMonth,
             status: 'pendente',
           }),
         )
         .select()
         .single()
+
       if (err) {
-        setError(describeError(err))
-        return
+        throw new Error(describeError(err))
       }
-      setExpenses((prev) => [mapExpense(row), ...prev])
+
+      const created = mapExpense(row)
+      setExpenses((prev) => [created, ...prev])
+      return created
     },
     [expenses],
   )

@@ -3,13 +3,15 @@ import {
   CheckCircle2,
   Clock,
   CopyPlus,
+  Loader2,
   Pencil,
   Search,
   Trash2,
   Filter,
 } from 'lucide-react'
 import clsx from 'clsx'
-import { addMonths, formatCurrency, formatMonthShort } from '../../utils/format.js'
+import { addMonths, formatCurrency, formatMonthLabel, formatMonthShort } from '../../utils/format.js'
+import { useToast } from '../common/Toast.jsx'
 
 function StatusToggle({ status, onToggle }) {
   const paid = status === 'pago'
@@ -40,10 +42,12 @@ export default function ExpenseTable({
   onToggle,
   onDuplicate,
 }) {
+  const toast = useToast()
   const [search, setSearch] = useState('')
   const [categoryId, setCategoryId] = useState('')
   const [type, setType] = useState('')
   const [status, setStatus] = useState('')
+  const [duplicatingId, setDuplicatingId] = useState(null)
 
   const categoryMap = useMemo(() => {
     const map = new Map()
@@ -63,6 +67,60 @@ export default function ExpenseTable({
   }, [expenses, search, categoryId, type, status])
 
   const totalReal = filtered.reduce((sum, expense) => sum + (Number(expense.actualValue) || 0), 0)
+  const isDuplicating = duplicatingId !== null
+
+  function notifyMissingAction(actionLabel) {
+    toast.info(`${actionLabel} indisponível no momento. Funcionalidade em desenvolvimento.`)
+  }
+
+  function handleToggle(expense) {
+    if (typeof onToggle !== 'function') {
+      notifyMissingAction('Alterar status')
+      return
+    }
+    onToggle(expense.id)
+  }
+
+  function handleEdit(expense) {
+    if (typeof onEdit !== 'function') {
+      notifyMissingAction('Editar lançamento')
+      return
+    }
+    onEdit(expense)
+  }
+
+  function handleDelete(expense) {
+    if (typeof onDelete !== 'function') {
+      notifyMissingAction('Excluir lançamento')
+      return
+    }
+    onDelete(expense)
+  }
+
+  async function handleDuplicate(expense) {
+    if (isDuplicating) return
+    if (typeof onDuplicate !== 'function') {
+      notifyMissingAction('Duplicar para o próximo mês')
+      return
+    }
+
+    const targetMonth = addMonths(expense.referenceMonth, 1)
+    setDuplicatingId(expense.id)
+    try {
+      await onDuplicate(expense.id, targetMonth)
+      toast.success('Lançamento duplicado com sucesso.', {
+        description: `${expense.description} · ${formatMonthLabel(targetMonth)}`,
+      })
+    } catch (err) {
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : 'Não foi possível duplicar o lançamento. Tente novamente.'
+      toast.error(message)
+    } finally {
+      setDuplicatingId(null)
+    }
+  }
 
   return (
     <div className="card overflow-hidden">
@@ -178,22 +236,30 @@ export default function ExpenseTable({
                         {formatCurrency(expense.actualValue)}
                       </td>
                       <td className="px-4 py-3">
-                        <StatusToggle status={expense.status} onToggle={() => onToggle(expense.id)} />
+                        <StatusToggle
+                          status={expense.status}
+                          onToggle={() => handleToggle(expense)}
+                        />
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-1">
                           <button
                             type="button"
                             title="Duplicar para o próximo mês"
-                            onClick={() => onDuplicate(expense.id, addMonths(expense.referenceMonth, 1))}
-                            className="rounded-lg p-2 text-slate-400 transition hover:bg-brand-elevated hover:text-white"
+                            onClick={() => handleDuplicate(expense)}
+                            disabled={isDuplicating}
+                            className="rounded-lg p-2 text-slate-400 transition hover:bg-brand-elevated hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400"
                           >
-                            <CopyPlus size={15} />
+                            {duplicatingId === expense.id ? (
+                              <Loader2 size={15} className="animate-spin" />
+                            ) : (
+                              <CopyPlus size={15} />
+                            )}
                           </button>
                           <button
                             type="button"
                             title="Editar"
-                            onClick={() => onEdit(expense)}
+                            onClick={() => handleEdit(expense)}
                             className="rounded-lg p-2 text-slate-400 transition hover:bg-brand-elevated hover:text-white"
                           >
                             <Pencil size={15} />
@@ -201,7 +267,7 @@ export default function ExpenseTable({
                           <button
                             type="button"
                             title="Excluir"
-                            onClick={() => onDelete(expense)}
+                            onClick={() => handleDelete(expense)}
                             className="rounded-lg p-2 text-brand-redBright transition hover:bg-brand-redDark/20"
                           >
                             <Trash2 size={15} />
@@ -239,7 +305,10 @@ export default function ExpenseTable({
                     </p>
                   </div>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <StatusToggle status={expense.status} onToggle={() => onToggle(expense.id)} />
+                    <StatusToggle
+                      status={expense.status}
+                      onToggle={() => handleToggle(expense)}
+                    />
                     <span
                       className={clsx(
                         'badge',
@@ -256,15 +325,21 @@ export default function ExpenseTable({
                     <div className="ml-auto flex gap-1">
                       <button
                         type="button"
-                        onClick={() => onDuplicate(expense.id, addMonths(expense.referenceMonth, 1))}
-                        className="rounded-lg p-2 text-slate-400 hover:bg-brand-elevated hover:text-white"
+                        title="Duplicar para o próximo mês"
+                        onClick={() => handleDuplicate(expense)}
+                        disabled={isDuplicating}
+                        className="rounded-lg p-2 text-slate-400 transition hover:bg-brand-elevated hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-slate-400"
                         aria-label="Duplicar"
                       >
-                        <CopyPlus size={16} />
+                        {duplicatingId === expense.id ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : (
+                          <CopyPlus size={16} />
+                        )}
                       </button>
                       <button
                         type="button"
-                        onClick={() => onEdit(expense)}
+                        onClick={() => handleEdit(expense)}
                         className="rounded-lg p-2 text-slate-400 hover:bg-brand-elevated hover:text-white"
                         aria-label="Editar"
                       >
@@ -272,7 +347,7 @@ export default function ExpenseTable({
                       </button>
                       <button
                         type="button"
-                        onClick={() => onDelete(expense)}
+                        onClick={() => handleDelete(expense)}
                         className="rounded-lg p-2 text-brand-redBright hover:bg-brand-redDark/20"
                         aria-label="Excluir"
                       >

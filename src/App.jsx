@@ -1,4 +1,5 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext.jsx'
 import { isSupabaseConfigured } from './lib/supabase.js'
 import Layout from './components/layout/Layout.jsx'
@@ -21,6 +22,21 @@ function SplashScreen() {
   )
 }
 
+function RequireSession({ children }) {
+  const { session, validateSession } = useAuth()
+  const location = useLocation()
+
+  useEffect(() => {
+    validateSession().catch(() => null)
+  }, [validateSession])
+
+  if (!session?.user) {
+    return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  }
+
+  return children
+}
+
 export default function App() {
   const { session, loading } = useAuth()
 
@@ -30,7 +46,13 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={session ? <Navigate to="/" replace /> : <LoginPage />} />
-      <Route element={session ? <Layout /> : <Navigate to="/login" replace />}>
+      <Route
+        element={
+          <RequireSession>
+            <Layout />
+          </RequireSession>
+        }
+      >
         <Route index element={<DashboardPage />} />
         <Route path="lancamentos" element={<ExpensesPage />} />
         <Route path="categorias" element={<CategoriesPage />} />
