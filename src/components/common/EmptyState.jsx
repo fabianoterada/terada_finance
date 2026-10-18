@@ -1,3 +1,10 @@
+/**
+ * @param {object} [props]
+ * @param {import('lucide-react').LucideIcon} [props.icon]
+ * @param {string} [props.title]
+ * @param {string} [props.description]
+ * @param {import('react').ReactNode} [props.action]
+ */
 export default function EmptyState({ icon: Icon, title, description, action }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-brand-border bg-brand-surface/40 px-6 py-12 text-center">

@@ -6,6 +6,7 @@ import Layout from './components/layout/Layout.jsx'
 import Logo from './components/common/Logo.jsx'
 import Spinner from './components/common/Spinner.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
+import ContasAPagarPage from './pages/ContasAPagarPage.jsx'
 import ExpensesPage from './pages/ExpensesPage.jsx'
 import CategoriesPage from './pages/CategoriesPage.jsx'
 import ReportsPage from './pages/ReportsPage.jsx'
@@ -55,6 +56,7 @@ export default function App() {
       >
         <Route index element={<DashboardPage />} />
         <Route path="lancamentos" element={<ExpensesPage />} />
+        <Route path="contas" element={<ContasAPagarPage />} />
         <Route path="categorias" element={<CategoriesPage />} />
         <Route path="relatorios" element={<ReportsPage />} />
         <Route path="usuarios" element={<UsersPage />} />

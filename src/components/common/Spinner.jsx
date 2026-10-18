@@ -1,5 +1,10 @@
 import clsx from 'clsx'
 
+/**
+ * @param {object} [props]
+ * @param {number} [props.size]
+ * @param {string} [props.className]
+ */
 export default function Spinner({ size = 20, className }) {
   return (
     <span

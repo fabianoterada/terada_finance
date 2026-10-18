@@ -14,6 +14,15 @@ function toDisplay(value) {
 /**
  * Campo monetario com digitacao fluida no padrao brasileiro (R$).
  * Mantem o valor numerico controlado via onChange(number).
+ *
+ * @param {object} props
+ * @param {number} props.value
+ * @param {(value: number) => void} props.onChange
+ * @param {string} [props.id]
+ * @param {string} [props.placeholder]
+ * @param {string} [props.className]
+ * @param {boolean} [props.required]
+ * @param {boolean} [props.autoFocus]
  */
 export default function CurrencyInput({
   value,

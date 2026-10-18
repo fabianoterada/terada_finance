@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard,
   Receipt,
+  Banknote,
   Tags,
   BarChart3,
   Users,
@@ -16,6 +17,7 @@ import { useAuth } from '../../context/AuthContext.jsx'
 export const NAV_ITEMS = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/lancamentos', label: 'Lançamentos', icon: Receipt },
+  { to: '/contas', label: 'Contas a Pagar', icon: Banknote },
   { to: '/categorias', label: 'Categorias', icon: Tags },
   { to: '/relatorios', label: 'Relatórios', icon: BarChart3 },
   { to: '/usuarios', label: 'Usuários', icon: Users, adminOnly: true },
