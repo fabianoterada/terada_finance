@@ -26,6 +26,7 @@ export default function DashboardPage() {
   const {
     categories,
     expenses,
+    contasPendentes,
     loading,
     error,
     setError,
@@ -64,6 +65,39 @@ export default function DashboardPage() {
     () => aggregateByCategory(currentExpenses, categories),
     [currentExpenses, categories],
   )
+
+  // Contas a Pagar com status "pendente" — previsao do mes selecionado
+  // (vencimento dentro do mes) e total geral.
+  const contasDoMes = useMemo(
+    () => contasPendentes.filter((conta) => (conta.dataVencimento ?? '').startsWith(month)),
+    [contasPendentes, month],
+  )
+  const totalAPagarMes = useMemo(
+    () => contasDoMes.reduce((total, conta) => total + conta.valor, 0),
+    [contasDoMes],
+  )
+  const totalAPagarGeral = useMemo(
+    () => contasPendentes.reduce((total, conta) => total + conta.valor, 0),
+    [contasPendentes],
+  )
+  const previsaoPorCategoria = useMemo(() => {
+    const valoresPorCategoria = new Map()
+    contasDoMes.forEach((conta) => {
+      if (!conta.categoryId) return
+      valoresPorCategoria.set(
+        conta.categoryId,
+        (valoresPorCategoria.get(conta.categoryId) ?? 0) + conta.valor,
+      )
+    })
+    return categories
+      .map((category) => ({
+        name: category.name,
+        color: category.color,
+        valor: Number((valoresPorCategoria.get(category.id) ?? 0).toFixed(2)),
+      }))
+      .filter((item) => item.valor > 0)
+      .sort((a, b) => b.valor - a.valor)
+  }, [contasDoMes, categories])
 
   function handleSubmit(data) {
     if (editing) updateExpense(editing.id, data)
@@ -111,11 +145,19 @@ export default function DashboardPage() {
         />
       ) : (
         <>
-          <DashboardMetrics totals={totals} previousTotals={previousTotals} variation={variation} />
+          <DashboardMetrics
+            totals={totals}
+            previousTotals={previousTotals}
+            variation={variation}
+            totalAPagar={totalAPagarMes}
+            contasAPagarCount={contasDoMes.length}
+            totalAPagarGeral={totalAPagarGeral}
+          />
 
           <AnalyticsCharts
             comparison={comparison}
             distribution={distribution}
+            previsao={previsaoPorCategoria}
             currentMonth={month}
             previousMonthKey={previousMonthKey}
           />

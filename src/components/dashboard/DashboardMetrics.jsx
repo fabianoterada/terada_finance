@@ -1,4 +1,4 @@
-import { ArrowDownRight, ArrowUpRight, Minus, TrendingUp, Wallet, CalendarClock, CheckCircle2 } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, FileText, Minus, TrendingUp, Wallet, CalendarClock, CheckCircle2 } from 'lucide-react'
 import clsx from 'clsx'
 import { formatCurrency, formatPercent } from '../../utils/format.js'
 
@@ -61,11 +61,19 @@ function MetricCard({ icon: Icon, label, value, hint, tone = 'default', footer, 
   )
 }
 
-export default function DashboardMetrics({ totals, previousTotals, variation }) {
+export default function DashboardMetrics({
+  totals,
+  previousTotals,
+  variation,
+  totalAPagar = 0,
+  contasAPagarCount = 0,
+  totalAPagarGeral = 0,
+}) {
   const paidPercent = totals.actual > 0 ? (totals.paid / totals.actual) * 100 : 0
+  const previstoTotal = totals.planned + totalAPagar
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
       <MetricCard
         icon={Wallet}
         label="Saldo Atual do Mês"
@@ -81,7 +89,13 @@ export default function DashboardMetrics({ totals, previousTotals, variation }) 
         icon={CalendarClock}
         label="Despesas Previstas"
         value={formatCurrency(totals.planned)}
-        hint={`${totals.count} lançamento${totals.count === 1 ? '' : 's'} no mês`}
+        hint={`${totals.count} lançamento${totals.count === 1 ? '' : 's'} no mês • C/ a pagar: ${formatCurrency(previstoTotal)}`}
+      />
+      <MetricCard
+        icon={FileText}
+        label="A Pagar (Contas)"
+        value={formatCurrency(totalAPagar)}
+        hint={`${contasAPagarCount} conta${contasAPagarCount === 1 ? '' : 's'} pendente${contasAPagarCount === 1 ? '' : 's'} no mês • Geral: ${formatCurrency(totalAPagarGeral)}`}
       />
       <MetricCard
         icon={CheckCircle2}

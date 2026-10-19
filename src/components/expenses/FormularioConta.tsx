@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import clsx from 'clsx'
 import { ArrowLeftRight, Banknote, CreditCard, FileText, QrCode } from 'lucide-react'
@@ -7,6 +7,7 @@ import CurrencyInput from '../common/CurrencyInput.jsx'
 import ErrorBanner from '../common/ErrorBanner.jsx'
 import Spinner from '../common/Spinner.jsx'
 import UploadBoleto from './UploadBoleto'
+import { useFinance } from '../../context/FinanceContext.jsx'
 import { supabase } from '../../lib/supabase.js'
 
 type MetodoPagamento = 'pix' | 'boleto' | 'dinheiro' | 'cartao' | 'transferencia'
@@ -18,6 +19,18 @@ export interface FormularioContaProps {
   onCancel?: () => void
 }
 
+interface SubcategoriaRef {
+  id: string
+  name: string
+}
+
+interface CategoriaRef {
+  id: string
+  name: string
+  color: string
+  subcategories: SubcategoriaRef[]
+}
+
 interface ContaFormState {
   descricao: string
   valor: number
@@ -25,6 +38,8 @@ interface ContaFormState {
   dataPagamento: string
   status: StatusConta
   metodoPagamento: MetodoPagamento | ''
+  categoriaId: string
+  subcategoriaId: string
   chavePix: string
   tipoChavePix: TipoChavePix
   codigoBarras: string
@@ -56,6 +71,8 @@ function formVazio(): ContaFormState {
     dataPagamento: '',
     status: 'pendente',
     metodoPagamento: '',
+    categoriaId: '',
+    subcategoriaId: '',
     chavePix: '',
     tipoChavePix: 'cpf',
     codigoBarras: '',
@@ -90,9 +107,16 @@ function MetodoOption({ ativo, icon: Icon, rotulo, onClick }: MetodoOptionProps)
 }
 
 export default function FormularioConta({ onSaved, onCancel }: FormularioContaProps) {
+  const { categories } = useFinance()
+  const listaCategorias = useMemo(() => categories as CategoriaRef[], [categories])
   const [form, setForm] = useState<ContaFormState>(formVazio)
   const [erro, setErro] = useState('')
   const [salvando, setSalvando] = useState(false)
+
+  const categoriaSelecionada = useMemo(
+    () => listaCategorias.find((categoria) => categoria.id === form.categoriaId) ?? null,
+    [listaCategorias, form.categoriaId],
+  )
 
   function atualizar(patch: Partial<ContaFormState>): void {
     setForm((prev) => ({ ...prev, ...patch }))
@@ -155,6 +179,8 @@ export default function FormularioConta({ onSaved, onCancel }: FormularioContaPr
           data_pagamento: form.dataPagamento || null,
           status: form.status,
           metodo_pagamento: form.metodoPagamento,
+          category_id: form.categoriaId || null,
+          subcategory_id: form.subcategoriaId || null,
           codigo_barras:
             form.metodoPagamento === 'boleto' && form.codigoBarras ? form.codigoBarras : null,
           chave_pix: form.metodoPagamento === 'pix' ? form.chavePix.trim() : null,
@@ -166,6 +192,20 @@ export default function FormularioConta({ onSaved, onCancel }: FormularioContaPr
         .single()
 
       if (insertError) throw new Error(insertError.message)
+
+      // Registra o arquivo enviado na tabela de anexos (exibida no modal de detalhes).
+      if (form.documentoUrl) {
+        const { error: anexoError } = await supabase.from('contas_anexos').insert({
+          conta_id: inserida.id,
+          user_id: userData.user.id,
+          arquivo_path: form.documentoUrl,
+          nome: form.documentoUrl.split('/').pop() || 'comprovante',
+        })
+        if (anexoError) {
+          console.warn('[FormularioConta] Falha ao registrar anexo:', anexoError.message)
+        }
+      }
+
       onSaved?.(String(inserida.id))
       setForm(formVazio())
     } catch (err) {
@@ -225,6 +265,52 @@ export default function FormularioConta({ onSaved, onCancel }: FormularioContaPr
             value={form.dataPagamento}
             onChange={(event) => atualizar({ dataPagamento: event.target.value })}
           />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <label className="label" htmlFor="conta-categoria">
+            Categoria
+          </label>
+          <select
+            id="conta-categoria"
+            className="input"
+            value={form.categoriaId}
+            onChange={(event) =>
+              atualizar({ categoriaId: event.target.value, subcategoriaId: '' })
+            }
+          >
+            <option value="">Sem categoria</option>
+            {listaCategorias.map((categoria) => (
+              <option key={categoria.id} value={categoria.id}>
+                {categoria.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor="conta-subcategoria">
+            Subcategoria
+          </label>
+          <select
+            id="conta-subcategoria"
+            className="input"
+            value={form.subcategoriaId}
+            disabled={!categoriaSelecionada || categoriaSelecionada.subcategories.length === 0}
+            onChange={(event) => atualizar({ subcategoriaId: event.target.value })}
+          >
+            <option value="">
+              {categoriaSelecionada && categoriaSelecionada.subcategories.length === 0
+                ? 'Sem subcategorias'
+                : 'Opcional...'}
+            </option>
+            {categoriaSelecionada?.subcategories.map((sub) => (
+              <option key={sub.id} value={sub.id}>
+                {sub.name}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 

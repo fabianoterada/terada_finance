@@ -29,7 +29,7 @@ create table if not exists public.contas_a_pagar (
   valor             numeric(14, 2) not null default 0,
   data_vencimento   date,
   data_pagamento    date,
-  status            text not null default 'pendente' check (status in ('pendente', 'pago')),
+  status            text not null default 'pendente' check (status in ('pendente', 'pago', 'cancelada')),
   metodo_pagamento  text check (metodo_pagamento in ('pix', 'boleto', 'dinheiro', 'cartao', 'transferencia')),
   codigo_barras     text,
   chave_pix         text,
@@ -122,3 +122,97 @@ exception
   when insufficient_privilege then
     raise notice 'Falha ao criar policy "comprovantes_contas_delete" (sem permissao em storage.objects).';
 end $$;
+
+-- ============================================================================
+-- v2 - Integracao com Lancamentos, categorias, anexos e status cancelada
+-- ============================================================================
+
+-- Categoria e subcategoria com a MESMA tipagem de public.expenses
+alter table public.contas_a_pagar
+  add column if not exists category_id uuid references public.categories (id) on delete cascade;
+alter table public.contas_a_pagar
+  add column if not exists subcategory_id uuid references public.subcategories (id) on delete set null;
+
+-- Substitui o constraint antigo (pendente/pago) e libera "cancelada"
+alter table public.contas_a_pagar drop constraint if exists contas_a_pagar_status_check;
+alter table public.contas_a_pagar
+  add constraint contas_a_pagar_status_check
+  check (status in ('pendente', 'pago', 'cancelada'));
+
+-- Referencia ao lancamento espelho gerado (evita duplicidade ao alternar status)
+alter table public.contas_a_pagar
+  add column if not exists lancamento_gerado_id uuid references public.expenses (id) on delete set null;
+
+-- ---------------------------------------------------------------------------
+-- Tabela: contas_anexos (comprovantes enviados para o Storage)
+-- ---------------------------------------------------------------------------
+create table if not exists public.contas_anexos (
+  id           uuid primary key default gen_random_uuid(),
+  conta_id     uuid not null references public.contas_a_pagar (id) on delete cascade,
+  user_id      uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  arquivo_path text not null,
+  nome         text not null default '',
+  created_at   timestamptz not null default now()
+);
+
+create index if not exists idx_contas_anexos_conta on public.contas_anexos (conta_id);
+create index if not exists idx_contas_anexos_user on public.contas_anexos (user_id);
+
+alter table public.contas_anexos enable row level security;
+
+drop policy if exists "contas_anexos_owner" on public.contas_anexos;
+create policy "contas_anexos_owner" on public.contas_anexos
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- ---------------------------------------------------------------------------
+-- Trigger: conta marcada como "pago" gera lancamento espelho em expenses;
+-- ao sair de "pago", o lancamento espelho e removido. SECURITY DEFINER para
+-- gravar em expenses sem depender das policies do usuario final.
+-- ---------------------------------------------------------------------------
+create or replace function public.sync_contas_a_pagar_lancamento()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_lancamento_id uuid;
+  v_mes           text;
+begin
+  -- Virou "pago" (insert ja pago ou transicao para pago): cria o espelho.
+  if new.status = 'pago' and (tg_op = 'INSERT' or old.status is distinct from 'pago') then
+    if new.lancamento_gerado_id is null then
+      v_mes := to_char(coalesce(new.data_pagamento, new.data_vencimento, now()), 'YYYY-MM');
+      insert into public.expenses (
+        user_id, description, category_id, subcategory_id,
+        expense_type, value_type, planned_value, actual_value,
+        status, reference_month, notes
+      ) values (
+        new.user_id, new.descricao, new.category_id, new.subcategory_id,
+        'variavel', 'manual', new.valor, new.valor,
+        'pago', v_mes, coalesce(new.observacoes, '')
+      ) returning id into v_lancamento_id;
+      new.lancamento_gerado_id := v_lancamento_id;
+    end if;
+  end if;
+
+  -- Saiu de "pago": remove o lancamento espelho correspondente.
+  if tg_op = 'UPDATE' and old.status = 'pago' and new.status is distinct from 'pago' then
+    if new.lancamento_gerado_id is not null then
+      delete from public.expenses where id = new.lancamento_gerado_id;
+      new.lancamento_gerado_id := null;
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_contas_a_pagar_sync_lancamento on public.contas_a_pagar;
+create trigger trg_contas_a_pagar_sync_lancamento
+  before insert or update on public.contas_a_pagar
+  for each row execute function public.sync_contas_a_pagar_lancamento();
+
+revoke all on function public.sync_contas_a_pagar_lancamento() from public;
+revoke all on function public.sync_contas_a_pagar_lancamento() from anon;
+revoke all on function public.sync_contas_a_pagar_lancamento() from authenticated;

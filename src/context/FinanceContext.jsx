@@ -33,6 +33,16 @@ function mapExpense(row) {
   }
 }
 
+function mapContaPendente(row) {
+  return {
+    id: row.id,
+    descricao: row.descricao,
+    valor: Number(row.valor) || 0,
+    dataVencimento: row.data_vencimento,
+    categoryId: row.category_id,
+  }
+}
+
 function normalizeExpense(expense) {
   const valueType = expense.valueType === 'fixo' ? 'fixo' : 'manual'
   const plannedValue = Number(expense.plannedValue) || 0
@@ -90,6 +100,7 @@ export function FinanceProvider({ children }) {
   const { user } = useAuth()
   const [categories, setCategories] = useState([])
   const [expenses, setExpenses] = useState([])
+  const [contasPendentes, setContasPendentes] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -97,6 +108,7 @@ export function FinanceProvider({ children }) {
     if (!supabase || !user) {
       setCategories([])
       setExpenses([])
+      setContasPendentes([])
       setLoading(false)
       return
     }
@@ -104,11 +116,17 @@ export function FinanceProvider({ children }) {
     setLoading(true)
     setError('')
     try {
-      const [categoriesResult, subcategoriesResult, expensesResult] = await Promise.all([
-        supabase.from('categories').select('*').order('created_at', { ascending: true }),
-        supabase.from('subcategories').select('*').order('created_at', { ascending: true }),
-        supabase.from('expenses').select('*').order('created_at', { ascending: false }),
-      ])
+      const [categoriesResult, subcategoriesResult, expensesResult, contasResult] =
+        await Promise.all([
+          supabase.from('categories').select('*').order('created_at', { ascending: true }),
+          supabase.from('subcategories').select('*').order('created_at', { ascending: true }),
+          supabase.from('expenses').select('*').order('created_at', { ascending: false }),
+          supabase
+            .from('contas_a_pagar')
+            .select('id, descricao, valor, data_vencimento, category_id')
+            .eq('status', 'pendente')
+            .order('data_vencimento', { ascending: true }),
+        ])
 
       if (categoriesResult.error) throw categoriesResult.error
       if (subcategoriesResult.error) throw subcategoriesResult.error
@@ -125,6 +143,15 @@ export function FinanceProvider({ children }) {
         categoriesResult.data.map((row) => mapCategory(row, subsByCategory.get(row.id) ?? [])),
       )
       setExpenses(expensesResult.data.map(mapExpense))
+
+      // Melhor esforso: se a tabela contas_a_pagar ainda nao existe no banco,
+      // o Dashboard carrega apenas com os lancamentos (sem quebrar a tela).
+      if (contasResult.error) {
+        console.warn('[FinanceContext] contas_a_pagar indisponiveis:', contasResult.error.message)
+        setContasPendentes([])
+      } else {
+        setContasPendentes((contasResult.data ?? []).map(mapContaPendente))
+      }
     } catch (err) {
       console.error('[FinanceContext] loadAll:', err)
       setError(describeError(err))
@@ -395,6 +422,7 @@ export function FinanceProvider({ children }) {
     () => ({
       categories,
       expenses,
+      contasPendentes,
       loading,
       error,
       setError,
@@ -417,6 +445,7 @@ export function FinanceProvider({ children }) {
     [
       categories,
       expenses,
+      contasPendentes,
       loading,
       error,
       loadAll,

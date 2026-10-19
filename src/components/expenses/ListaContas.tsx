@@ -5,11 +5,13 @@ import type { LucideIcon } from 'lucide-react'
 import EmptyState from '../common/EmptyState.jsx'
 import ErrorBanner from '../common/ErrorBanner.jsx'
 import LoadingBlock from '../common/LoadingBlock.jsx'
+import ModalDetalhesConta from './ModalDetalhesConta'
+import { useFinance } from '../../context/FinanceContext.jsx'
 import { supabase } from '../../lib/supabase.js'
 import { formatCurrency } from '../../utils/format.js'
 
 type MetodoPagamento = 'pix' | 'boleto' | 'dinheiro' | 'cartao' | 'transferencia'
-type StatusConta = 'pendente' | 'pago'
+type StatusConta = 'pendente' | 'pago' | 'cancelada'
 
 interface Conta {
   id: string
@@ -45,6 +47,11 @@ const ICONES_METODO: Record<MetodoPagamento, LucideIcon> = {
   transferencia: ArrowLeftRight,
 }
 
+function normalizarStatus(status: string): StatusConta {
+  if (status === 'pago' || status === 'cancelada') return status
+  return 'pendente'
+}
+
 function formatarData(iso: string | null): string {
   if (!iso) return '-'
   const data = new Date(`${iso}T00:00:00`)
@@ -53,10 +60,12 @@ function formatarData(iso: string | null): string {
 }
 
 export default function ListaContas({ recarregarKey = 0 }: ListaContasProps) {
+  const { refresh } = useFinance()
   const [contas, setContas] = useState<Conta[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
   const [copiado, setCopiado] = useState<string | null>(null)
+  const [contaSelecionada, setContaSelecionada] = useState<string | null>(null)
   const montadoRef = useRef(false)
   const timerCopiarRef = useRef(0)
 
@@ -75,7 +84,14 @@ export default function ListaContas({ recarregarKey = 0 }: ListaContasProps) {
         .order('data_vencimento', { ascending: true })
         .order('created_at', { ascending: false })
       if (selectError) throw new Error(selectError.message)
-      if (montadoRef.current) setContas((data as Conta[] | null) ?? [])
+      if (montadoRef.current) {
+        setContas(
+          ((data as Conta[] | null) ?? []).map((conta) => ({
+            ...conta,
+            status: normalizarStatus(conta.status),
+          })),
+        )
+      }
     } catch (err) {
       if (montadoRef.current) {
         setErro(err instanceof Error && err.message ? err.message : 'Erro ao carregar as contas.')
@@ -93,6 +109,11 @@ export default function ListaContas({ recarregarKey = 0 }: ListaContasProps) {
       window.clearTimeout(timerCopiarRef.current)
     }
   }, [carregar, recarregarKey])
+
+  function handleContaAtualizada(): void {
+    void carregar()
+    void (refresh as any)()
+  }
 
   async function copiar(texto: string, idItem: string): Promise<void> {
     try {
@@ -126,10 +147,25 @@ export default function ListaContas({ recarregarKey = 0 }: ListaContasProps) {
             const IconeMetodo = conta.metodo_pagamento ? ICONES_METODO[conta.metodo_pagamento] : FileText
             const rotuloMetodo = conta.metodo_pagamento ? ROTULOS_METODO[conta.metodo_pagamento] : '-'
             const pago = conta.status === 'pago'
+            const cancelada = conta.status === 'cancelada'
             return (
               <li
                 key={conta.id}
-                className="rounded-2xl border border-brand-border bg-brand-surface/70 p-4"
+                role="button"
+                tabIndex={0}
+                aria-label={`Ver detalhes de ${conta.descricao || 'conta'}`}
+                onClick={() => setContaSelecionada(conta.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    setContaSelecionada(conta.id)
+                  }
+                }}
+                className={clsx(
+                  'cursor-pointer rounded-2xl border border-brand-border bg-brand-surface/70 p-4 transition',
+                  'hover:border-brand-red/50 hover:bg-brand-elevated/50 focus:outline-none focus:ring-1 focus:ring-brand-red/60',
+                  cancelada && 'opacity-60',
+                )}
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-3">
@@ -146,10 +182,12 @@ export default function ListaContas({ recarregarKey = 0 }: ListaContasProps) {
                             'rounded-full border px-2 py-0.5 font-semibold',
                             pago
                               ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-                              : 'border-amber-500/40 bg-amber-500/10 text-amber-200',
+                              : cancelada
+                                ? 'border-slate-500/40 bg-slate-500/10 text-slate-400'
+                                : 'border-amber-500/40 bg-amber-500/10 text-amber-200',
                           )}
                         >
-                          {pago ? 'Pago' : 'Pendente'}
+                          {pago ? 'Pago' : cancelada ? 'Cancelada' : 'Pendente'}
                         </span>
                         <span className="text-slate-400">{rotuloMetodo}</span>
                         <span className="flex items-center gap-1 text-slate-500">
@@ -173,7 +211,11 @@ export default function ListaContas({ recarregarKey = 0 }: ListaContasProps) {
                 </div>
 
                 {(conta.codigo_barras || conta.chave_pix) && (
-                  <div className="mt-3 space-y-2 border-t border-brand-border/60 pt-3">
+                  <div
+                    className="mt-3 space-y-2 border-t border-brand-border/60 pt-3"
+                    onClick={(event) => event.stopPropagation()}
+                    onKeyDown={(event) => event.stopPropagation()}
+                  >
                     {conta.codigo_barras && (
                       <div className="flex items-center gap-2">
                         <Barcode size={14} className="shrink-0 text-slate-500" />
@@ -216,6 +258,12 @@ export default function ListaContas({ recarregarKey = 0 }: ListaContasProps) {
           })}
         </ul>
       )}
+
+      <ModalDetalhesConta
+        contaId={contaSelecionada}
+        onClose={() => setContaSelecionada(null)}
+        onAtualizada={handleContaAtualizada}
+      />
     </div>
   )
 }
