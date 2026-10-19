@@ -202,6 +202,40 @@ $$;
 revoke all on function public.admin_update_user(uuid, text, text, text, boolean, boolean) from public;
 grant execute on function public.admin_update_user(uuid, text, text, text, boolean, boolean) to authenticated;
 
+-- ---------------------------------------------------------------------------
+-- 3.1) RPC: exclusao de usuarios pelo administrador
+-- ---------------------------------------------------------------------------
+-- Remove auth.users; profiles/identities saem em cascata. Nao permite excluir
+-- a propria conta.
+create or replace function public.admin_delete_user(p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_admin_atual uuid := auth.uid();
+begin
+  if auth.uid() is not null and not public.is_admin() then
+    raise exception 'Acesso negado: apenas administradores podem excluir usuarios.'
+      using errcode = '42501';
+  end if;
+
+  if p_id is null or not exists (select 1 from auth.users where id = p_id) then
+    raise exception 'Usuario nao encontrado.' using errcode = 'P0002';
+  end if;
+
+  if p_id = v_admin_atual then
+    raise exception 'Voce nao pode excluir a propria conta.' using errcode = '22023';
+  end if;
+
+  delete from auth.users where id = p_id;
+end;
+$$;
+
+revoke all on function public.admin_delete_user(uuid) from public;
+grant execute on function public.admin_delete_user(uuid) to authenticated;
+
 -- 4) OPCIONAL - BUG 1: normalizar status de contas_a_pagar em minusculas
 -- ---------------------------------------------------------------------------
 -- SO execute se o diagnostico 1.4 mostrar 'pendente'/'parcial' em minusculas

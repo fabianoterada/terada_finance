@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Users, RefreshCw, ShieldCheck, ShieldOff, Plus, Pencil } from 'lucide-react'
+import { Users, RefreshCw, ShieldCheck, ShieldOff, Plus, Pencil, Trash2 } from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '../lib/supabase.js'
 import { useAuth } from '../context/AuthContext.jsx'
+import ConfirmDialog from '../components/common/ConfirmDialog.jsx'
 import EmptyState from '../components/common/EmptyState.jsx'
 import ErrorBanner from '../components/common/ErrorBanner.jsx'
 import LoadingBlock from '../components/common/LoadingBlock.jsx'
 import PageHeader from '../components/common/PageHeader.jsx'
 import Spinner from '../components/common/Spinner.jsx'
 import Switch from '../components/common/Switch.jsx'
+import { useToast } from '../components/common/Toast.jsx'
 import UserModal from '../components/users/UserModal.jsx'
 
 function formatDate(value) {
@@ -18,12 +20,14 @@ function formatDate(value) {
 
 export default function UsersPage() {
   const { isAdmin, user } = useAuth()
+  const toast = useToast()
   const [profiles, setProfiles] = useState([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState(null)
   const [error, setError] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editingProfile, setEditingProfile] = useState(null)
+  const [pendingDelete, setPendingDelete] = useState(null)
 
   function openCreate() {
     setEditingProfile(null)
@@ -38,6 +42,30 @@ export default function UsersPage() {
   function closeModal() {
     setModalOpen(false)
     setEditingProfile(null)
+  }
+
+  async function deleteUser(profile) {
+    if (!profile) return
+    setBusyId(profile.id)
+    setError('')
+    try {
+      const { error: rpcError } = await supabase.rpc('admin_delete_user', { p_id: profile.id })
+      if (rpcError) {
+        console.error('[UsersPage] Falha ao excluir usuário:', rpcError, { id: profile.id })
+        setError(rpcError.message)
+        toast.error(rpcError.message)
+        return
+      }
+      setProfiles((prev) => prev.filter((item) => item.id !== profile.id))
+      toast.success('Usuário excluído com sucesso.')
+    } catch (err) {
+      console.error('[UsersPage] Erro inesperado ao excluir usuário:', err, { id: profile.id })
+      const message = err instanceof Error && err.message ? err.message : 'Erro ao excluir o usuário.'
+      setError(message)
+      toast.error(message)
+    } finally {
+      setBusyId(null)
+    }
   }
 
   const load = useCallback(async () => {
@@ -197,16 +225,28 @@ export default function UsersPage() {
 
                   <div className="flex items-center justify-between gap-3 sm:justify-center">
                     <span className="text-xs font-medium text-slate-400 sm:hidden">Ações</span>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => openEdit(profile)}
-                      title="Editar usuário"
-                      aria-label="Editar usuário"
-                      className="rounded-lg border border-brand-border p-1.5 text-slate-400 transition hover:border-brand-red/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <Pencil size={14} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => openEdit(profile)}
+                        title="Editar usuário"
+                        aria-label="Editar usuário"
+                        className="rounded-lg border border-brand-border p-1.5 text-slate-400 transition hover:border-brand-red/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy || isSelf}
+                        onClick={() => setPendingDelete(profile)}
+                        title={isSelf ? 'Você não pode excluir a si mesmo' : 'Excluir usuário'}
+                        aria-label="Excluir usuário"
+                        className="rounded-lg border border-brand-border p-1.5 text-slate-400 transition hover:border-brand-red/50 hover:text-brand-redBright disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 </li>
               )
@@ -225,6 +265,17 @@ export default function UsersPage() {
         profile={editingProfile}
         onClose={closeModal}
         onSaved={load}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingDelete)}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={() => deleteUser(pendingDelete)}
+        title="Excluir usuário"
+        message={`Tem certeza que deseja excluir ${
+          pendingDelete?.full_name?.trim() || pendingDelete?.email || 'este usuário'
+        }? Esta ação é permanente e remove também o acesso dele.`}
+        confirmLabel="Excluir"
       />
     </div>
   )

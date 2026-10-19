@@ -396,6 +396,39 @@ revoke all on function public.admin_update_user(uuid, text, text, text, boolean,
 grant execute on function public.admin_update_user(uuid, text, text, text, boolean, boolean) to authenticated;
 
 -- ---------------------------------------------------------------------------
+-- Exclusao interna de usuarios (usada pela tela "Gerenciar Usuarios").
+-- Remove a conta em auth.users; profiles/identities saem em cascata.
+-- ---------------------------------------------------------------------------
+create or replace function public.admin_delete_user(p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+declare
+  v_admin_atual uuid := auth.uid();
+begin
+  if auth.uid() is not null and not public.is_admin() then
+    raise exception 'Acesso negado: apenas administradores podem excluir usuarios.'
+      using errcode = '42501';
+  end if;
+
+  if p_id is null or not exists (select 1 from auth.users where id = p_id) then
+    raise exception 'Usuario nao encontrado.' using errcode = 'P0002';
+  end if;
+
+  if p_id = v_admin_atual then
+    raise exception 'Voce nao pode excluir a propria conta.' using errcode = '22023';
+  end if;
+
+  delete from auth.users where id = p_id;
+end;
+$$;
+
+revoke all on function public.admin_delete_user(uuid) from public;
+grant execute on function public.admin_delete_user(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
 -- Seed: usuario administrador inicial (altere a senha depois de entrar).
 -- E-mail: admin@sistema.com / Senha: admin123
 -- ---------------------------------------------------------------------------
