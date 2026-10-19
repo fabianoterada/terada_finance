@@ -115,7 +115,94 @@ select policyname, cmd, roles, qual, with_check
 --  returning id, email, full_name, is_active, is_admin;
 
 -- ---------------------------------------------------------------------------
--- 3) OPCIONAL - BUG 1: normalizar status de contas_a_pagar em minusculas
+-- 3) RPC: edicao de usuarios (nome, e-mail, senha) pelo administrador
+-- ---------------------------------------------------------------------------
+-- Necessario porque e-mail e senha vivem em auth.users (schema restrito) e so
+-- podem ser alterados com privilegio elevado. Esta funcao SECURITY DEFINER
+-- valida que o chamador e admin e faz as duas etapas: auth.users + profiles.
+create or replace function public.admin_update_user(
+  p_id         uuid,
+  p_email      text,
+  p_full_name  text default '',
+  p_password   text default null,
+  p_is_active  boolean default true,
+  p_is_admin   boolean default false
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, auth, extensions
+as $$
+declare
+  v_email      text := lower(trim(coalesce(p_email, '')));
+  v_senha      text := nullif(trim(coalesce(p_password, '')), '');
+  v_admin_atual uuid := auth.uid();
+begin
+  -- Autorizacao: apenas administradores (ou contexto de servico) podem editar.
+  if auth.uid() is not null and not public.is_admin() then
+    raise exception 'Acesso negado: apenas administradores podem editar usuarios.'
+      using errcode = '42501';
+  end if;
+
+  if p_id is null or not exists (select 1 from auth.users where id = p_id) then
+    raise exception 'Usuario nao encontrado.' using errcode = 'P0002';
+  end if;
+
+  if v_email = '' or position('@' in v_email) = 0 then
+    raise exception 'Informe um e-mail valido.' using errcode = '22023';
+  end if;
+
+  if v_senha is not null and length(v_senha) < 6 then
+    raise exception 'A senha deve ter ao menos 6 caracteres.' using errcode = '22023';
+  end if;
+
+  -- Evita impedir o proprio admin de manter suas permissoes / desativar a si.
+  if p_id = v_admin_atual then
+    p_is_admin := true;
+    p_is_active := true;
+  end if;
+
+  if exists (select 1 from auth.users where email = v_email and id <> p_id) then
+    raise exception 'Este e-mail ja esta cadastrado.' using errcode = '23505';
+  end if;
+
+  -- auth.users: e-mail sempre; senha apenas quando informada.
+  update auth.users
+     set email = v_email,
+         email_confirmed_at = coalesce(email_confirmed_at, now()),
+         raw_user_meta_data = coalesce(raw_user_meta_data, '{}'::jsonb)
+           || jsonb_build_object('full_name', coalesce(p_full_name, '')),
+         updated_at = now()
+   where id = p_id;
+
+  if v_senha is not null then
+    update auth.users
+       set encrypted_password = crypt(v_senha, gen_salt('bf')),
+           updated_at = now()
+     where id = p_id;
+  end if;
+
+  -- auth.identities: mantem o identity_data alinhado ao novo e-mail.
+  update auth.identities
+     set identity_data = coalesce(identity_data, '{}'::jsonb)
+           || jsonb_build_object('sub', p_id::text, 'email', v_email),
+         updated_at = now()
+   where user_id = p_id and provider = 'email';
+
+  -- profiles: nome, e-mail e flags.
+  update public.profiles
+     set full_name = coalesce(p_full_name, ''),
+         email     = v_email,
+         is_active = coalesce(p_is_active, true),
+         is_admin  = coalesce(p_is_admin, false)
+   where id = p_id;
+end;
+$$;
+
+revoke all on function public.admin_update_user(uuid, text, text, text, boolean, boolean) from public;
+grant execute on function public.admin_update_user(uuid, text, text, text, boolean, boolean) to authenticated;
+
+-- 4) OPCIONAL - BUG 1: normalizar status de contas_a_pagar em minusculas
 -- ---------------------------------------------------------------------------
 -- SO execute se o diagnostico 1.4 mostrar 'pendente'/'parcial' em minusculas
 -- E se o schema v3 ainda nao tiver sido aplicado. Caso contrario, ignore.

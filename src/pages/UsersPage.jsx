@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Users, RefreshCw, ShieldCheck, ShieldOff, Plus } from 'lucide-react'
+import { Users, RefreshCw, ShieldCheck, ShieldOff, Plus, Pencil } from 'lucide-react'
 import clsx from 'clsx'
 import { supabase } from '../lib/supabase.js'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -23,6 +23,22 @@ export default function UsersPage() {
   const [busyId, setBusyId] = useState(null)
   const [error, setError] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
+  const [editingProfile, setEditingProfile] = useState(null)
+
+  function openCreate() {
+    setEditingProfile(null)
+    setModalOpen(true)
+  }
+
+  function openEdit(profile) {
+    setEditingProfile(profile)
+    setModalOpen(true)
+  }
+
+  function closeModal() {
+    setModalOpen(false)
+    setEditingProfile(null)
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -104,7 +120,7 @@ export default function UsersPage() {
             <button type="button" className="btn-ghost" onClick={load} disabled={loading}>
               <RefreshCw size={16} /> Recarregar
             </button>
-            <button type="button" className="btn-primary" onClick={() => setModalOpen(true)}>
+            <button type="button" className="btn-primary" onClick={openCreate}>
               <Plus size={16} /> Novo usuário
             </button>
           </>
@@ -119,10 +135,11 @@ export default function UsersPage() {
         <EmptyState icon={Users} title="Nenhum usuário encontrado" />
       ) : (
         <div className="card overflow-hidden p-0">
-          <div className="hidden grid-cols-[1fr_auto_auto] items-center gap-4 border-b border-brand-border px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 sm:grid">
+          <div className="hidden grid-cols-[1fr_auto_auto_auto] items-center gap-4 border-b border-brand-border px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 sm:grid">
             <span>Usuário</span>
             <span className="text-center">Ativo</span>
             <span className="text-center">Admin</span>
+            <span className="text-center">Ações</span>
           </div>
 
           <ul className="divide-y divide-brand-border">
@@ -132,7 +149,7 @@ export default function UsersPage() {
               return (
                 <li
                   key={profile.id}
-                  className="flex flex-col gap-4 px-5 py-4 sm:grid sm:grid-cols-[1fr_auto_auto] sm:items-center"
+                  className="flex flex-col gap-4 px-5 py-4 sm:grid sm:grid-cols-[1fr_auto_auto_auto] sm:items-center"
                 >
                   <div className="flex items-center gap-3">
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-red/15 text-sm font-bold text-brand-redBright">
@@ -177,6 +194,20 @@ export default function UsersPage() {
                       {profile.is_admin ? 'Admin' : 'Comum'}
                     </button>
                   </div>
+
+                  <div className="flex items-center justify-between gap-3 sm:justify-center">
+                    <span className="text-xs font-medium text-slate-400 sm:hidden">Ações</span>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => openEdit(profile)}
+                      title="Editar usuário"
+                      aria-label="Editar usuário"
+                      className="rounded-lg border border-brand-border p-1.5 text-slate-400 transition hover:border-brand-red/50 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                  </div>
                 </li>
               )
             })}
@@ -188,7 +219,13 @@ export default function UsersPage() {
         Usuários inativos não conseguem fazer login. Você não pode alterar o seu próprio acesso.
       </p>
 
-      <UserModal open={modalOpen} onClose={() => setModalOpen(false)} onCreated={load} />
+      <UserModal
+        key={editingProfile?.id ?? 'novo'}
+        open={modalOpen}
+        profile={editingProfile}
+        onClose={closeModal}
+        onSaved={load}
+      />
     </div>
   )
 }
