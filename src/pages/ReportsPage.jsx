@@ -49,8 +49,32 @@ function SummaryPill({ label, value, tone }) {
   )
 }
 
+/**
+ * Converte uma conta a pagar em aberto (Pendente/Parcial) para o formato de
+ * lancamento usado pelos relatorios.
+ * - Usa apenas o SALDO (valor - valor_pago) para nao duplicar: as baixas ja
+ *   geram lancamentos vinculados em `expenses`.
+ * - Contas pagas/canceladas nao vem nessa lista (query do FinanceContext),
+ *   entao o lancamento gerado na baixa e contado uma unica vez.
+ */
+function contaToReportItem(conta) {
+  const saldo = Number(conta.saldo) || 0
+  const vencimento = typeof conta.dataVencimento === 'string' ? conta.dataVencimento : ''
+  return {
+    id: `conta-${conta.id}`,
+    description: conta.descricao,
+    categoryId: conta.categoryId,
+    subcategoryId: null,
+    expenseType: 'variavel',
+    plannedValue: saldo,
+    actualValue: saldo,
+    status: 'pendente',
+    referenceMonth: vencimento.slice(0, 7),
+  }
+}
+
 export default function ReportsPage() {
-  const { categories, expenses, loading, error, setError, getSubcategory } = useFinance()
+  const { categories, expenses, contasPendentes, loading, error, setError, getSubcategory } = useFinance()
 
   const current = getCurrentMonth()
   const [startMonth, setStartMonth] = useState(addMonths(current, -5))
@@ -64,10 +88,15 @@ export default function ReportsPage() {
 
   const months = useMemo(() => monthRange(startMonth, endMonth), [startMonth, endMonth])
 
+  const source = useMemo(
+    () => [...expenses, ...contasPendentes.map(contaToReportItem)],
+    [expenses, contasPendentes],
+  )
+
   const filtered = useMemo(() => {
     const start = startMonth <= endMonth ? startMonth : endMonth
     const end = startMonth <= endMonth ? endMonth : startMonth
-    return expenses.filter((expense) => {
+    return source.filter((expense) => {
       if (!expense.referenceMonth) return false
       if (expense.referenceMonth < start || expense.referenceMonth > end) return false
       if (categoryId && expense.categoryId !== categoryId) return false
@@ -76,7 +105,7 @@ export default function ReportsPage() {
       if (status && expense.status !== status) return false
       return true
     })
-  }, [expenses, startMonth, endMonth, categoryId, subcategoryId, type, status])
+  }, [source, startMonth, endMonth, categoryId, subcategoryId, type, status])
 
   const totals = useMemo(() => computeTotals(filtered), [filtered])
   const breakdown = useMemo(

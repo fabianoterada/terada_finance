@@ -27,13 +27,18 @@ export default function UsersPage() {
   const load = useCallback(async () => {
     setLoading(true)
     setError('')
-    const { data, error: loadError } = await supabase
-      .from('profiles')
-      .select('id, email, full_name, is_active, is_admin, created_at')
-      .order('created_at', { ascending: true })
-    if (loadError) setError(loadError.message)
-    else setProfiles(data ?? [])
-    setLoading(false)
+    try {
+      const { data, error: loadError } = await supabase
+        .from('profiles')
+        .select('id, email, full_name, is_active, is_admin, created_at')
+        .order('created_at', { ascending: true })
+      if (loadError) setError(loadError.message)
+      else setProfiles(data ?? [])
+    } catch (err) {
+      setError(err instanceof Error && err.message ? err.message : 'Erro ao carregar usuários.')
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => {
@@ -44,10 +49,29 @@ export default function UsersPage() {
   async function updateProfile(id, patch) {
     setBusyId(id)
     setError('')
-    const { error: updateError } = await supabase.from('profiles').update(patch).eq('id', id)
-    if (updateError) setError(updateError.message)
-    else await load()
-    setBusyId(null)
+    try {
+      const { data: updatedRows, error: updateError } = await supabase
+        .from('profiles')
+        .update(patch)
+        .eq('id', id)
+        .select('id')
+
+      if (updateError) {
+        setError(updateError.message)
+        return
+      }
+      if (!updatedRows || updatedRows.length === 0) {
+        setError(
+          'Nenhum registro foi alterado. Verifique se o seu usuário é administrador e se a política de UPDATE da tabela profiles está aplicada no Supabase.',
+        )
+        return
+      }
+      await load()
+    } catch (err) {
+      setError(err instanceof Error && err.message ? err.message : 'Erro ao atualizar o usuário.')
+    } finally {
+      setBusyId(null)
+    }
   }
 
   if (!isAdmin) {
