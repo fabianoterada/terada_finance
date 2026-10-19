@@ -1,6 +1,7 @@
 /**
  * Leitura inteligente de boletos/comprovantes:
- * - PDF: renderiza a primeira pagina em um canvas em memoria (pdfjs-dist).
+ * - PDF: renderiza a primeira pagina em um canvas em memoria (pdfjs-dist)
+ *   e envia a imagem gerada para o Tesseract.
  * - Imagem (JPG/PNG): OCR com Tesseract.js em portugues.
  * - A extracao da linha digitavel e feita por regex sobre o texto reconhecido.
  * Falhas de leitura retornam null silenciosamente (o OCR nunca lanca erro).
@@ -51,10 +52,10 @@ export function localizarLinhaDigitavel(texto: string): string | null {
   return null
 }
 
-/** OCR de imagem (JPG/PNG) em portugues usando Tesseract.js. */
-async function textoDeImagem(file: File): Promise<string> {
+/** OCR de imagem (JPG/PNG) ou dataURL renderizado em português usando Tesseract.js. */
+async function textoDeImagem(source: File | string): Promise<string> {
   const { default: Tesseract } = await import('tesseract.js')
-  const resultado = await Tesseract.recognize(file, 'por')
+  const resultado = await Tesseract.recognize(source, 'por')
   return resultado.data.text
 }
 
@@ -90,10 +91,25 @@ async function imagemDePdf(file: File): Promise<string> {
  */
 export async function extrairLinhaDigitavel(file: File): Promise<string | null> {
   try {
-    const texto =
-      file.type === 'application/pdf'
-        ? await comTempoLimpo(imagemDePdf(file), TIMEOUT_PDF_MS, 'Tempo esgotado ao ler o PDF.')
-        : await comTempoLimpo(textoDeImagem(file), TIMEOUT_OCR_MS, 'Tempo esgotado no OCR da imagem.')
+    if (file.type === 'application/pdf') {
+      // PDF: renderiza a pagina em dataURL e manda a imagem para o Tesseract.
+      const imagem = await comTempoLimpo(
+        imagemDePdf(file),
+        TIMEOUT_PDF_MS,
+        'Tempo esgotado ao ler o PDF.',
+      )
+      const texto = await comTempoLimpo(
+        textoDeImagem(imagem),
+        TIMEOUT_OCR_MS,
+        'Tempo esgotado no OCR do PDF.',
+      )
+      return localizarLinhaDigitavel(texto)
+    }
+    const texto = await comTempoLimpo(
+      textoDeImagem(file),
+      TIMEOUT_OCR_MS,
+      'Tempo esgotado no OCR da imagem.',
+    )
     return localizarLinhaDigitavel(texto)
   } catch {
     return null

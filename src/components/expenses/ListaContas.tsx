@@ -5,18 +5,19 @@ import type { LucideIcon } from 'lucide-react'
 import EmptyState from '../common/EmptyState.jsx'
 import ErrorBanner from '../common/ErrorBanner.jsx'
 import LoadingBlock from '../common/LoadingBlock.jsx'
-import ModalDetalhesConta from './ModalDetalhesConta'
+import ModalBaixaERP from './ModalBaixaERP'
 import { useFinance } from '../../context/FinanceContext.jsx'
 import { supabase } from '../../lib/supabase.js'
 import { formatCurrency } from '../../utils/format.js'
 
 type MetodoPagamento = 'pix' | 'boleto' | 'dinheiro' | 'cartao' | 'transferencia'
-type StatusConta = 'pendente' | 'pago' | 'cancelada'
+type StatusConta = 'Pendente' | 'Parcial' | 'Pago' | 'Cancelada'
 
 interface Conta {
   id: string
   descricao: string
   valor: number
+  valor_pago: number
   data_vencimento: string | null
   data_pagamento: string | null
   status: StatusConta
@@ -48,8 +49,11 @@ const ICONES_METODO: Record<MetodoPagamento, LucideIcon> = {
 }
 
 function normalizarStatus(status: string): StatusConta {
-  if (status === 'pago' || status === 'cancelada') return status
-  return 'pendente'
+  const valor = status.trim().toLowerCase()
+  if (valor === 'pago') return 'Pago'
+  if (valor === 'parcial') return 'Parcial'
+  if (valor === 'cancelada') return 'Cancelada'
+  return 'Pendente'
 }
 
 function formatarData(iso: string | null): string {
@@ -88,6 +92,8 @@ export default function ListaContas({ recarregarKey = 0 }: ListaContasProps) {
         setContas(
           ((data as Conta[] | null) ?? []).map((conta) => ({
             ...conta,
+            valor: Number(conta.valor) || 0,
+            valor_pago: Number(conta.valor_pago) || 0,
             status: normalizarStatus(conta.status),
           })),
         )
@@ -146,8 +152,10 @@ export default function ListaContas({ recarregarKey = 0 }: ListaContasProps) {
           {contas.map((conta) => {
             const IconeMetodo = conta.metodo_pagamento ? ICONES_METODO[conta.metodo_pagamento] : FileText
             const rotuloMetodo = conta.metodo_pagamento ? ROTULOS_METODO[conta.metodo_pagamento] : '-'
-            const pago = conta.status === 'pago'
-            const cancelada = conta.status === 'cancelada'
+            const pago = conta.status === 'Pago'
+            const parcial = conta.status === 'Parcial'
+            const cancelada = conta.status === 'Cancelada'
+            const saldo = Math.max(conta.valor - conta.valor_pago, 0)
             return (
               <li
                 key={conta.id}
@@ -182,21 +190,28 @@ export default function ListaContas({ recarregarKey = 0 }: ListaContasProps) {
                             'rounded-full border px-2 py-0.5 font-semibold',
                             pago
                               ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-                              : cancelada
-                                ? 'border-slate-500/40 bg-slate-500/10 text-slate-400'
-                                : 'border-amber-500/40 bg-amber-500/10 text-amber-200',
+                              : parcial
+                                ? 'border-sky-500/40 bg-sky-500/10 text-sky-200'
+                                : cancelada
+                                  ? 'border-slate-500/40 bg-slate-500/10 text-slate-400'
+                                  : 'border-amber-500/40 bg-amber-500/10 text-amber-200',
                           )}
                         >
-                          {pago ? 'Pago' : cancelada ? 'Cancelada' : 'Pendente'}
+                          {conta.status}
                         </span>
                         <span className="text-slate-400">{rotuloMetodo}</span>
                         <span className="flex items-center gap-1 text-slate-500">
                           <CalendarDays size={12} />
                           Vence {formatarData(conta.data_vencimento)}
                         </span>
-                        {conta.data_pagamento && (
+                        {pago && conta.data_pagamento && (
                           <span className="text-slate-500">
                             Pago em {formatarData(conta.data_pagamento)}
+                          </span>
+                        )}
+                        {parcial && (
+                          <span className="text-sky-300">
+                            Pago {formatCurrency(conta.valor_pago)} de {formatCurrency(conta.valor)}
                           </span>
                         )}
                         {conta.documento_url && (
@@ -205,9 +220,16 @@ export default function ListaContas({ recarregarKey = 0 }: ListaContasProps) {
                       </div>
                     </div>
                   </div>
-                  <span className="text-base font-bold tabular-nums text-white">
-                    {formatCurrency(conta.valor)}
-                  </span>
+                  <div className="shrink-0 text-right">
+                    <span className="text-base font-bold tabular-nums text-white">
+                      {formatCurrency(conta.valor)}
+                    </span>
+                    {parcial && (
+                      <span className="block text-xs font-semibold tabular-nums text-amber-200">
+                        Saldo: {formatCurrency(saldo)}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {(conta.codigo_barras || conta.chave_pix) && (
@@ -259,7 +281,7 @@ export default function ListaContas({ recarregarKey = 0 }: ListaContasProps) {
         </ul>
       )}
 
-      <ModalDetalhesConta
+      <ModalBaixaERP
         contaId={contaSelecionada}
         onClose={() => setContaSelecionada(null)}
         onAtualizada={handleContaAtualizada}

@@ -34,10 +34,14 @@ function mapExpense(row) {
 }
 
 function mapContaPendente(row) {
+  const valor = Number(row.valor) || 0
+  const valorPago = Number(row.valor_pago) || 0
   return {
     id: row.id,
     descricao: row.descricao,
-    valor: Number(row.valor) || 0,
+    valor,
+    valorPago,
+    saldo: Math.max(valor - valorPago, 0),
     dataVencimento: row.data_vencimento,
     categoryId: row.category_id,
   }
@@ -123,8 +127,8 @@ export function FinanceProvider({ children }) {
           supabase.from('expenses').select('*').order('created_at', { ascending: false }),
           supabase
             .from('contas_a_pagar')
-            .select('id, descricao, valor, data_vencimento, category_id')
-            .eq('status', 'pendente')
+            .select('id, descricao, valor, valor_pago, data_vencimento, category_id')
+            .in('status', ['Pendente', 'Parcial'])
             .order('data_vencimento', { ascending: true }),
         ])
 

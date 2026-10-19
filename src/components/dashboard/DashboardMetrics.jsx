@@ -95,7 +95,7 @@ export default function DashboardMetrics({
         icon={FileText}
         label="A Pagar (Contas)"
         value={formatCurrency(totalAPagar)}
-        hint={`${contasAPagarCount} conta${contasAPagarCount === 1 ? '' : 's'} pendente${contasAPagarCount === 1 ? '' : 's'} no mês • Geral: ${formatCurrency(totalAPagarGeral)}`}
+        hint={`${contasAPagarCount} conta${contasAPagarCount === 1 ? '' : 's'} em aberto no mês • Geral: ${formatCurrency(totalAPagarGeral)}`}
       />
       <MetricCard
         icon={CheckCircle2}

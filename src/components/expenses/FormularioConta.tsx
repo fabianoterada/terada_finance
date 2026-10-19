@@ -6,13 +6,12 @@ import type { LucideIcon } from 'lucide-react'
 import CurrencyInput from '../common/CurrencyInput.jsx'
 import ErrorBanner from '../common/ErrorBanner.jsx'
 import Spinner from '../common/Spinner.jsx'
-import UploadBoleto from './UploadBoleto'
+import UploadBoleto, { type ArquivoEnviado } from './UploadBoleto'
 import { useFinance } from '../../context/FinanceContext.jsx'
 import { supabase } from '../../lib/supabase.js'
 
 type MetodoPagamento = 'pix' | 'boleto' | 'dinheiro' | 'cartao' | 'transferencia'
 type TipoChavePix = 'cpf' | 'cnpj' | 'email' | 'telefone' | 'aleatoria'
-type StatusConta = 'pendente' | 'pago'
 
 export interface FormularioContaProps {
   onSaved?: (id: string) => void
@@ -35,15 +34,12 @@ interface ContaFormState {
   descricao: string
   valor: number
   dataVencimento: string
-  dataPagamento: string
-  status: StatusConta
   metodoPagamento: MetodoPagamento | ''
   categoriaId: string
   subcategoriaId: string
   chavePix: string
   tipoChavePix: TipoChavePix
   codigoBarras: string
-  documentoUrl: string
   observacoes: string
 }
 
@@ -68,15 +64,12 @@ function formVazio(): ContaFormState {
     descricao: '',
     valor: 0,
     dataVencimento: '',
-    dataPagamento: '',
-    status: 'pendente',
     metodoPagamento: '',
     categoriaId: '',
     subcategoriaId: '',
     chavePix: '',
     tipoChavePix: 'cpf',
     codigoBarras: '',
-    documentoUrl: '',
     observacoes: '',
   }
 }
@@ -110,12 +103,19 @@ export default function FormularioConta({ onSaved, onCancel }: FormularioContaPr
   const { categories } = useFinance()
   const listaCategorias = useMemo(() => categories as CategoriaRef[], [categories])
   const [form, setForm] = useState<ContaFormState>(formVazio)
+  const [arquivo, setArquivo] = useState<ArquivoEnviado | null>(null)
   const [erro, setErro] = useState('')
   const [salvando, setSalvando] = useState(false)
 
   const categoriaSelecionada = useMemo(
     () => listaCategorias.find((categoria) => categoria.id === form.categoriaId) ?? null,
     [listaCategorias, form.categoriaId],
+  )
+
+  const subcategoriaSelecionada = useMemo(
+    () =>
+      categoriaSelecionada?.subcategories.find((sub) => sub.id === form.subcategoriaId) ?? null,
+    [categoriaSelecionada, form.subcategoriaId],
   )
 
   function atualizar(patch: Partial<ContaFormState>): void {
@@ -176,16 +176,17 @@ export default function FormularioConta({ onSaved, onCancel }: FormularioContaPr
           descricao: form.descricao.trim(),
           valor: form.valor,
           data_vencimento: form.dataVencimento,
-          data_pagamento: form.dataPagamento || null,
-          status: form.status,
+          status: 'Pendente',
           metodo_pagamento: form.metodoPagamento,
           category_id: form.categoriaId || null,
           subcategory_id: form.subcategoriaId || null,
+          categoria: categoriaSelecionada?.name ?? null,
+          subcategoria: subcategoriaSelecionada?.name ?? null,
           codigo_barras:
             form.metodoPagamento === 'boleto' && form.codigoBarras ? form.codigoBarras : null,
           chave_pix: form.metodoPagamento === 'pix' ? form.chavePix.trim() : null,
           tipo_chave_pix: form.metodoPagamento === 'pix' ? form.tipoChavePix : null,
-          documento_url: form.documentoUrl || null,
+          documento_url: arquivo?.storagePath ?? null,
           observacoes: form.observacoes.trim(),
         })
         .select('id')
@@ -193,13 +194,14 @@ export default function FormularioConta({ onSaved, onCancel }: FormularioContaPr
 
       if (insertError) throw new Error(insertError.message)
 
-      // Registra o arquivo enviado na tabela de anexos (exibida no modal de detalhes).
-      if (form.documentoUrl) {
+      // Registra o arquivo enviado na tabela de anexos (formato v3 com metadados).
+      if (arquivo) {
         const { error: anexoError } = await supabase.from('contas_anexos').insert({
           conta_id: inserida.id,
-          user_id: userData.user.id,
-          arquivo_path: form.documentoUrl,
-          nome: form.documentoUrl.split('/').pop() || 'comprovante',
+          nome_arquivo: arquivo.nomeArquivo,
+          tipo_conteudo: arquivo.tipoConteudo,
+          tamanho_bytes: arquivo.tamanhoBytes,
+          storage_path: arquivo.storagePath,
         })
         if (anexoError) {
           console.warn('[FormularioConta] Falha ao registrar anexo:', anexoError.message)
@@ -208,6 +210,7 @@ export default function FormularioConta({ onSaved, onCancel }: FormularioContaPr
 
       onSaved?.(String(inserida.id))
       setForm(formVazio())
+      setArquivo(null)
     } catch (err) {
       setErro(err instanceof Error && err.message ? err.message : 'Erro ao salvar a conta.')
     } finally {
@@ -231,7 +234,7 @@ export default function FormularioConta({ onSaved, onCancel }: FormularioContaPr
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="conta-valor">
             Valor
@@ -252,18 +255,6 @@ export default function FormularioConta({ onSaved, onCancel }: FormularioContaPr
             className="input"
             value={form.dataVencimento}
             onChange={(event) => atualizar({ dataVencimento: event.target.value })}
-          />
-        </div>
-        <div>
-          <label className="label" htmlFor="conta-pagamento">
-            Data de pagamento
-          </label>
-          <input
-            id="conta-pagamento"
-            type="date"
-            className="input"
-            value={form.dataPagamento}
-            onChange={(event) => atualizar({ dataPagamento: event.target.value })}
           />
         </div>
       </div>
@@ -383,44 +374,31 @@ export default function FormularioConta({ onSaved, onCancel }: FormularioContaPr
       <div>
         <span className="label">Boleto ou comprovante (opcional)</span>
         <UploadBoleto
-          onUploadSuccess={(path) => atualizar({ documentoUrl: path })}
+          onUploadSuccess={(enviado) => {
+            setArquivo(enviado)
+            setErro('')
+          }}
           onLinhaDigitavelEncontrada={handleLinhaDigitavel}
           onError={(mensagem) => setErro(mensagem)}
         />
-        {form.documentoUrl && (
-          <p className="mt-2 truncate text-xs text-emerald-300" title={form.documentoUrl}>
-            Comprovante anexado: {form.documentoUrl}
+        {arquivo && (
+          <p className="mt-2 truncate text-xs text-emerald-300" title={arquivo.storagePath}>
+            Comprovante anexado: {arquivo.nomeArquivo}
           </p>
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div>
-          <label className="label" htmlFor="conta-status">
-            Status
-          </label>
-          <select
-            id="conta-status"
-            className="input"
-            value={form.status}
-            onChange={(event) => atualizar({ status: event.target.value as StatusConta })}
-          >
-            <option value="pendente">Pendente</option>
-            <option value="pago">Pago</option>
-          </select>
-        </div>
-        <div>
-          <label className="label" htmlFor="conta-observacoes">
-            Observações (opcional)
-          </label>
-          <input
-            id="conta-observacoes"
-            className="input"
-            placeholder="Anotações sobre esta conta..."
-            value={form.observacoes}
-            onChange={(event) => atualizar({ observacoes: event.target.value })}
-          />
-        </div>
+      <div>
+        <label className="label" htmlFor="conta-observacoes">
+          Observações (opcional)
+        </label>
+        <input
+          id="conta-observacoes"
+          className="input"
+          placeholder="Anotações sobre esta conta..."
+          value={form.observacoes}
+          onChange={(event) => atualizar({ observacoes: event.target.value })}
+        />
       </div>
 
       <ErrorBanner message={erro} onClose={() => setErro('')} />

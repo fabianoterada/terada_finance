@@ -66,27 +66,29 @@ export default function DashboardPage() {
     [currentExpenses, categories],
   )
 
-  // Contas a Pagar com status "pendente" — previsao do mes selecionado
-  // (vencimento dentro do mes) e total geral.
+  // Contas a Pagar em aberto (Pendente/Parcial) — previsao do mes selecionado
+  // (vencimento dentro do mes) e saldo devedor total.
   const contasDoMes = useMemo(
     () => contasPendentes.filter((conta) => (conta.dataVencimento ?? '').startsWith(month)),
     [contasPendentes, month],
   )
   const totalAPagarMes = useMemo(
-    () => contasDoMes.reduce((total, conta) => total + conta.valor, 0),
+    () => contasDoMes.reduce((total, conta) => total + (conta.saldo ?? conta.valor), 0),
     [contasDoMes],
   )
   const totalAPagarGeral = useMemo(
-    () => contasPendentes.reduce((total, conta) => total + conta.valor, 0),
+    () => contasPendentes.reduce((total, conta) => total + (conta.saldo ?? conta.valor), 0),
     [contasPendentes],
   )
   const previsaoPorCategoria = useMemo(() => {
     const valoresPorCategoria = new Map()
     contasDoMes.forEach((conta) => {
       if (!conta.categoryId) return
+      const saldo = conta.saldo ?? conta.valor
+      if (saldo <= 0) return
       valoresPorCategoria.set(
         conta.categoryId,
-        (valoresPorCategoria.get(conta.categoryId) ?? 0) + conta.valor,
+        (valoresPorCategoria.get(conta.categoryId) ?? 0) + saldo,
       )
     })
     return categories

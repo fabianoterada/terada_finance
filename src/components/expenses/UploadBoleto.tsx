@@ -10,8 +10,16 @@ import { BUCKET_COMPROVANTES, comTempoLimpo, extrairLinhaDigitavel } from '../..
 const MIME_ACEITOS = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg']
 const TIMEOUT_UPLOAD_MS = 60000
 
+/** Metadados do arquivo enviado, gravados em contas_anexos (formato v3). */
+export interface ArquivoEnviado {
+  storagePath: string
+  nomeArquivo: string
+  tipoConteudo: string
+  tamanhoBytes: number
+}
+
 export interface UploadBoletoProps {
-  onUploadSuccess: (path: string) => void
+  onUploadSuccess: (arquivo: ArquivoEnviado) => void
   onLinhaDigitavelEncontrada: (linha: string) => void
   onError: (msg: string) => void
 }
@@ -27,7 +35,7 @@ function mensagemDeErro(err: unknown): string {
   return 'Erro inesperado ao enviar o arquivo. Tente novamente.'
 }
 
-async function enviarArquivo(client: SupabaseClient, file: File): Promise<string> {
+async function enviarArquivo(client: SupabaseClient, file: File): Promise<ArquivoEnviado> {
   const { data: userData, error: userError } = await client.auth.getUser()
   if (userError) throw new Error(userError.message)
   if (!userData.user) throw new Error('Sessão expirada. Faça login novamente.')
@@ -39,7 +47,13 @@ async function enviarArquivo(client: SupabaseClient, file: File): Promise<string
     .from(BUCKET_COMPROVANTES)
     .upload(path, file, { contentType: file.type, upsert: false })
   if (error) throw new Error(error.message)
-  return path
+
+  return {
+    storagePath: path,
+    nomeArquivo: file.name || nomeArquivo,
+    tipoConteudo: file.type,
+    tamanhoBytes: file.size,
+  }
 }
 
 export default function UploadBoleto({
