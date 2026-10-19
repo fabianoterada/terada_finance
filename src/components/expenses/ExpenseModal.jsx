@@ -55,9 +55,14 @@ export default function ExpenseModal({ open, onClose, onSubmit, initial, categor
     setError('')
   }, [open, initial, defaultMonth])
 
+  const despesaCategories = useMemo(
+    () => categories.filter((category) => (category.tipo ?? 'despesa') === 'despesa'),
+    [categories],
+  )
+
   const selectedCategory = useMemo(
-    () => categories.find((category) => category.id === form.categoryId) ?? null,
-    [categories, form.categoryId],
+    () => despesaCategories.find((category) => category.id === form.categoryId) ?? null,
+    [despesaCategories, form.categoryId],
   )
 
   function update(patch) {
@@ -138,7 +143,7 @@ export default function ExpenseModal({ open, onClose, onSubmit, initial, categor
               onChange={(event) => handleCategoryChange(event.target.value)}
             >
               <option value="">Selecione...</option>
-              {categories.map((category) => (
+              {despesaCategories.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
                 </option>

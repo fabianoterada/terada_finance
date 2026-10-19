@@ -11,12 +11,14 @@ const PALETTE = [
 export default function CategoryModal({ open, onClose, onSubmit, initial }) {
   const [name, setName] = useState('')
   const [color, setColor] = useState(PALETTE[0])
+  const [tipo, setTipo] = useState('despesa')
   const [error, setError] = useState('')
 
   useEffect(() => {
     if (!open) return
     setName(initial?.name ?? '')
     setColor(initial?.color ?? PALETTE[0])
+    setTipo(initial?.tipo === 'receita' ? 'receita' : 'despesa')
     setError('')
   }, [open, initial])
 
@@ -26,7 +28,7 @@ export default function CategoryModal({ open, onClose, onSubmit, initial }) {
       setError('Informe um nome para a categoria.')
       return
     }
-    onSubmit({ name: name.trim(), color })
+    onSubmit({ name: name.trim(), color, tipo })
     onClose()
   }
 
@@ -64,6 +66,24 @@ export default function CategoryModal({ open, onClose, onSubmit, initial }) {
             }}
           />
           {error && <p className="mt-1.5 text-xs font-medium text-brand-redBright">{error}</p>}
+        </div>
+
+        <div>
+          <label className="label" htmlFor="category-tipo">
+            Tipo
+          </label>
+          <select
+            id="category-tipo"
+            className="input"
+            value={tipo}
+            onChange={(event) => setTipo(event.target.value)}
+          >
+            <option value="despesa">Despesa</option>
+            <option value="receita">Receita</option>
+          </select>
+          <p className="mt-1.5 text-xs text-slate-500">
+            Apenas categorias de despesa aparecem nos formulários de lançamento e contas a pagar.
+          </p>
         </div>
 
         <div>

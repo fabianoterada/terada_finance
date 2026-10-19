@@ -55,6 +55,11 @@ export default function ExpenseTable({
     return map
   }, [categories])
 
+  const categoriaOptions = useMemo(
+    () => categories.filter((category) => (category.tipo ?? 'despesa') === 'despesa'),
+    [categories],
+  )
+
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
     return expenses.filter((expense) => {
@@ -146,7 +151,7 @@ export default function ExpenseTable({
             onChange={(event) => setCategoryId(event.target.value)}
           >
             <option value="">Todas categorias</option>
-            {categories.map((category) => (
+            {categoriaOptions.map((category) => (
               <option key={category.id} value={category.id}>
                 {category.name}
               </option>

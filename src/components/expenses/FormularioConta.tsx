@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import clsx from 'clsx'
 import { ArrowLeftRight, Banknote, CreditCard, FileText, QrCode } from 'lucide-react'
@@ -7,6 +7,7 @@ import CurrencyInput from '../common/CurrencyInput.jsx'
 import ErrorBanner from '../common/ErrorBanner.jsx'
 import Spinner from '../common/Spinner.jsx'
 import UploadBoleto, { type ArquivoEnviado } from './UploadBoleto'
+import type { Conta } from './ListaContas'
 import { useFinance } from '../../context/FinanceContext.jsx'
 import { supabase } from '../../lib/supabase.js'
 
@@ -16,6 +17,7 @@ type TipoChavePix = 'cpf' | 'cnpj' | 'email' | 'telefone' | 'aleatoria'
 export interface FormularioContaProps {
   onSaved?: (id: string) => void
   onCancel?: () => void
+  contaInicial?: Conta | null
 }
 
 interface SubcategoriaRef {
@@ -27,6 +29,7 @@ interface CategoriaRef {
   id: string
   name: string
   color: string
+  tipo?: string
   subcategories: SubcategoriaRef[]
 }
 
@@ -74,6 +77,27 @@ function formVazio(): ContaFormState {
   }
 }
 
+function formDaConta(conta: Conta | null | undefined): ContaFormState {
+  if (!conta) return formVazio()
+  const metodoValido = METODOS.some((metodo) => metodo.valor === conta.metodo_pagamento)
+  const tipoChaveAtual: TipoChavePix =
+    conta.tipo_chave_pix && TIPOS_CHAVE_PIX.some((tipo) => tipo.valor === conta.tipo_chave_pix)
+      ? (conta.tipo_chave_pix as TipoChavePix)
+      : 'cpf'
+  return {
+    descricao: conta.descricao,
+    valor: conta.valor,
+    dataVencimento: conta.data_vencimento ?? '',
+    metodoPagamento: metodoValido && conta.metodo_pagamento ? conta.metodo_pagamento : '',
+    categoriaId: conta.category_id ?? '',
+    subcategoriaId: conta.subcategory_id ?? '',
+    chavePix: conta.chave_pix ?? '',
+    tipoChavePix: tipoChaveAtual,
+    codigoBarras: conta.codigo_barras ?? '',
+    observacoes: conta.observacoes ?? '',
+  }
+}
+
 interface MetodoOptionProps {
   ativo: boolean
   icon: LucideIcon
@@ -99,13 +123,25 @@ function MetodoOption({ ativo, icon: Icon, rotulo, onClick }: MetodoOptionProps)
   )
 }
 
-export default function FormularioConta({ onSaved, onCancel }: FormularioContaProps) {
+export default function FormularioConta({ onSaved, onCancel, contaInicial }: FormularioContaProps) {
   const { categories } = useFinance()
-  const listaCategorias = useMemo(() => categories as CategoriaRef[], [categories])
-  const [form, setForm] = useState<ContaFormState>(formVazio)
+  const listaCategorias = useMemo(
+    () =>
+      (categories as CategoriaRef[]).filter(
+        (categoria) => (categoria.tipo ?? 'despesa') === 'despesa',
+      ),
+    [categories],
+  )
+  const [form, setForm] = useState<ContaFormState>(() => formDaConta(contaInicial))
   const [arquivo, setArquivo] = useState<ArquivoEnviado | null>(null)
   const [erro, setErro] = useState('')
   const [salvando, setSalvando] = useState(false)
+
+  useEffect(() => {
+    setForm(formDaConta(contaInicial))
+    setArquivo(null)
+    setErro('')
+  }, [contaInicial])
 
   const categoriaSelecionada = useMemo(
     () => listaCategorias.find((categoria) => categoria.id === form.categoriaId) ?? null,
@@ -165,39 +201,56 @@ export default function FormularioConta({ onSaved, onCancel }: FormularioContaPr
 
     setSalvando(true)
     try {
-      const { data: userData, error: userError } = await supabase.auth.getUser()
-      if (userError) throw new Error(userError.message)
-      if (!userData.user) throw new Error('Sessão expirada. Faça login novamente.')
+      const payload = {
+        descricao: form.descricao.trim(),
+        valor: form.valor,
+        data_vencimento: form.dataVencimento,
+        metodo_pagamento: form.metodoPagamento,
+        category_id: form.categoriaId || null,
+        subcategory_id: form.subcategoriaId || null,
+        categoria: categoriaSelecionada?.name ?? null,
+        subcategoria: subcategoriaSelecionada?.name ?? null,
+        codigo_barras:
+          form.metodoPagamento === 'boleto' && form.codigoBarras ? form.codigoBarras : null,
+        chave_pix: form.metodoPagamento === 'pix' ? form.chavePix.trim() : null,
+        tipo_chave_pix: form.metodoPagamento === 'pix' ? form.tipoChavePix : null,
+        documento_url: arquivo?.storagePath ?? contaInicial?.documento_url ?? null,
+        observacoes: form.observacoes.trim(),
+      }
 
-      const { data: inserida, error: insertError } = await supabase
-        .from('contas_a_pagar')
-        .insert({
-          user_id: userData.user.id,
-          descricao: form.descricao.trim(),
-          valor: form.valor,
-          data_vencimento: form.dataVencimento,
-          status: 'Pendente',
-          metodo_pagamento: form.metodoPagamento,
-          category_id: form.categoriaId || null,
-          subcategory_id: form.subcategoriaId || null,
-          categoria: categoriaSelecionada?.name ?? null,
-          subcategoria: subcategoriaSelecionada?.name ?? null,
-          codigo_barras:
-            form.metodoPagamento === 'boleto' && form.codigoBarras ? form.codigoBarras : null,
-          chave_pix: form.metodoPagamento === 'pix' ? form.chavePix.trim() : null,
-          tipo_chave_pix: form.metodoPagamento === 'pix' ? form.tipoChavePix : null,
-          documento_url: arquivo?.storagePath ?? null,
-          observacoes: form.observacoes.trim(),
-        })
-        .select('id')
-        .single()
+      let contaId: string
 
-      if (insertError) throw new Error(insertError.message)
+      if (contaInicial) {
+        // Edicao: nao altera user_id nem status (status e gerido pelo trigger
+        // de baixa por lancamentos vinculados no banco).
+        const { error: updateError } = await supabase
+          .from('contas_a_pagar')
+          .update(payload)
+          .eq('id', contaInicial.id)
+        if (updateError) throw new Error(updateError.message)
+        contaId = contaInicial.id
+      } else {
+        const { data: userData, error: userError } = await supabase.auth.getUser()
+        if (userError) throw new Error(userError.message)
+        if (!userData.user) throw new Error('Sessão expirada. Faça login novamente.')
+
+        const { data: inserida, error: insertError } = await supabase
+          .from('contas_a_pagar')
+          .insert({
+            user_id: userData.user.id,
+            ...payload,
+            status: 'Pendente',
+          })
+          .select('id')
+          .single()
+        if (insertError) throw new Error(insertError.message)
+        contaId = String(inserida.id)
+      }
 
       // Registra o arquivo enviado na tabela de anexos (formato v3 com metadados).
       if (arquivo) {
         const { error: anexoError } = await supabase.from('contas_anexos').insert({
-          conta_id: inserida.id,
+          conta_id: contaId,
           nome_arquivo: arquivo.nomeArquivo,
           tipo_conteudo: arquivo.tipoConteudo,
           tamanho_bytes: arquivo.tamanhoBytes,
@@ -208,7 +261,7 @@ export default function FormularioConta({ onSaved, onCancel }: FormularioContaPr
         }
       }
 
-      onSaved?.(String(inserida.id))
+      onSaved?.(contaId)
       setForm(formVazio())
       setArquivo(null)
     } catch (err) {
@@ -414,6 +467,8 @@ export default function FormularioConta({ onSaved, onCancel }: FormularioContaPr
             <>
               <Spinner size={15} /> Salvando...
             </>
+          ) : contaInicial ? (
+            'Salvar alterações'
           ) : (
             'Salvar conta'
           )}

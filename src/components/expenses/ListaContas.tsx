@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ArrowLeftRight, Banknote, Barcode, CalendarDays, Check, Copy, CreditCard, FileText, QrCode, Receipt } from 'lucide-react'
+import type { MouseEvent as ReactMouseEvent } from 'react'
+import { ArrowLeftRight, Banknote, Barcode, CalendarDays, Check, Copy, CreditCard, FileText, Pencil, QrCode, Receipt, Trash2 } from 'lucide-react'
 import clsx from 'clsx'
 import type { LucideIcon } from 'lucide-react'
+import ConfirmDialog from '../common/ConfirmDialog.jsx'
 import EmptyState from '../common/EmptyState.jsx'
 import ErrorBanner from '../common/ErrorBanner.jsx'
 import LoadingBlock from '../common/LoadingBlock.jsx'
+import { useToast } from '../common/Toast.jsx'
 import ModalBaixaERP from './ModalBaixaERP'
 import { useFinance } from '../../context/FinanceContext.jsx'
 import { supabase } from '../../lib/supabase.js'
@@ -13,7 +16,7 @@ import { formatCurrency } from '../../utils/format.js'
 type MetodoPagamento = 'pix' | 'boleto' | 'dinheiro' | 'cartao' | 'transferencia'
 type StatusConta = 'Pendente' | 'Parcial' | 'Pago' | 'Cancelada'
 
-interface Conta {
+export interface Conta {
   id: string
   descricao: string
   valor: number
@@ -26,10 +29,22 @@ interface Conta {
   chave_pix: string | null
   tipo_chave_pix: string | null
   documento_url: string | null
+  category_id: string | null
+  subcategory_id: string | null
+  categoria: string | null
+  subcategoria: string | null
+  observacoes: string
 }
 
 export interface ListaContasProps {
   recarregarKey?: number
+  onEditar?: (conta: Conta) => void
+}
+
+interface ToastApi {
+  success: (message: string, options?: { description?: string; duration?: number }) => void
+  error: (message: string, options?: { description?: string; duration?: number }) => void
+  info: (message: string, options?: { description?: string; duration?: number }) => void
 }
 
 const ROTULOS_METODO: Record<MetodoPagamento, string> = {
@@ -63,15 +78,21 @@ function formatarData(iso: string | null): string {
   return data.toLocaleDateString('pt-BR')
 }
 
-export default function ListaContas({ recarregarKey = 0 }: ListaContasProps) {
-  const { refresh } = useFinance()
+export default function ListaContas({ recarregarKey = 0, onEditar }: ListaContasProps) {
+  // FinanceContext.jsx e JS sem declaracao de tipos: o retorno de useFinance()
+  // infere como `never`. O cast reflete apenas a parte usada neste componente.
+  const { refresh } = useFinance() as { refresh: () => void }
   const [contas, setContas] = useState<Conta[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
   const [copiado, setCopiado] = useState<string | null>(null)
   const [contaSelecionada, setContaSelecionada] = useState<string | null>(null)
+  const [contaExcluindo, setContaExcluindo] = useState<Conta | null>(null)
   const montadoRef = useRef(false)
   const timerCopiarRef = useRef(0)
+  // Toast.jsx e JS sem declaracao de tipos; o contexto infere null e o
+  // retorno de useToast() vira `never` no TS. O cast reflete a API real.
+  const toast = useToast() as ToastApi
 
   const carregar = useCallback(async (): Promise<void> => {
     if (!supabase) {
@@ -84,7 +105,9 @@ export default function ListaContas({ recarregarKey = 0 }: ListaContasProps) {
     try {
       const { data, error: selectError } = await supabase
         .from('contas_a_pagar')
-        .select('*')
+        .select(
+          'id, descricao, valor, valor_pago, data_vencimento, data_pagamento, status, metodo_pagamento, codigo_barras, chave_pix, tipo_chave_pix, documento_url, category_id, subcategory_id, categoria, subcategoria, observacoes',
+        )
         .order('data_vencimento', { ascending: true })
         .order('created_at', { ascending: false })
       if (selectError) throw new Error(selectError.message)
@@ -118,7 +141,38 @@ export default function ListaContas({ recarregarKey = 0 }: ListaContasProps) {
 
   function handleContaAtualizada(): void {
     void carregar()
-    void (refresh as any)()
+    void refresh()
+  }
+
+  function handleEditar(event: ReactMouseEvent, conta: Conta): void {
+    event.stopPropagation()
+    onEditar?.(conta)
+  }
+
+  async function confirmarExclusao(): Promise<void> {
+    const conta = contaExcluindo
+    if (!conta) return
+    if (!supabase) {
+      toast.error('Supabase não configurado. Verifique as variáveis de ambiente.')
+      return
+    }
+    try {
+      const { error: deleteError } = await supabase
+        .from('contas_a_pagar')
+        .delete()
+        .eq('id', conta.id)
+      if (deleteError) throw new Error(deleteError.message)
+      toast.success('Conta excluída com sucesso.', {
+        description: conta.descricao || '(sem descrição)',
+      })
+      if (contaSelecionada === conta.id) setContaSelecionada(null)
+      await carregar()
+      void refresh()
+    } catch (err) {
+      toast.error(
+        err instanceof Error && err.message ? err.message : 'Erro ao excluir a conta.',
+      )
+    }
   }
 
   async function copiar(texto: string, idItem: string): Promise<void> {
@@ -220,15 +274,40 @@ export default function ListaContas({ recarregarKey = 0 }: ListaContasProps) {
                       </div>
                     </div>
                   </div>
-                  <div className="shrink-0 text-right">
-                    <span className="text-base font-bold tabular-nums text-white">
-                      {formatCurrency(conta.valor)}
-                    </span>
-                    {parcial && (
-                      <span className="block text-xs font-semibold tabular-nums text-amber-200">
-                        Saldo: {formatCurrency(saldo)}
+                  <div className="flex shrink-0 items-start gap-3">
+                    <div className="text-right">
+                      <span className="text-base font-bold tabular-nums text-white">
+                        {formatCurrency(conta.valor)}
                       </span>
-                    )}
+                      {parcial && (
+                        <span className="block text-xs font-semibold tabular-nums text-amber-200">
+                          Saldo: {formatCurrency(saldo)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        title="Editar conta"
+                        aria-label="Editar conta"
+                        onClick={(event) => handleEditar(event, conta)}
+                        className="rounded-lg p-2 text-slate-400 transition hover:bg-brand-elevated hover:text-white"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        title="Excluir conta"
+                        aria-label="Excluir conta"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          setContaExcluindo(conta)
+                        }}
+                        className="rounded-lg p-2 text-brand-redBright transition hover:bg-brand-redDark/20"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -285,6 +364,15 @@ export default function ListaContas({ recarregarKey = 0 }: ListaContasProps) {
         contaId={contaSelecionada}
         onClose={() => setContaSelecionada(null)}
         onAtualizada={handleContaAtualizada}
+      />
+
+      <ConfirmDialog
+        open={Boolean(contaExcluindo)}
+        onClose={() => setContaExcluindo(null)}
+        onConfirm={() => void confirmarExclusao()}
+        title="Excluir conta"
+        message={`Excluir "${contaExcluindo?.descricao || '(sem descrição)'}"? Lançamentos de baixa e anexos vinculados serão removidos junto. Esta ação não pode ser desfeita.`}
+        confirmLabel="Excluir conta"
       />
     </div>
   )

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -12,6 +13,7 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import Logo from '../common/Logo.jsx'
+import ProfileModal from '../users/ProfileModal.jsx'
 import { useAuth } from '../../context/AuthContext.jsx'
 
 export const NAV_ITEMS = [
@@ -25,6 +27,7 @@ export const NAV_ITEMS = [
 
 export default function Sidebar({ onNavigate }) {
   const { user, profile, isAdmin, signOut } = useAuth()
+  const [profileOpen, setProfileOpen] = useState(false)
   const items = NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin)
 
   return (
@@ -78,12 +81,21 @@ export default function Sidebar({ onNavigate }) {
         </div>
         <button
           type="button"
+          onClick={() => setProfileOpen(true)}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-brand-border bg-brand-elevated/50 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:text-white"
+        >
+          <User size={15} /> Meu perfil
+        </button>
+        <button
+          type="button"
           onClick={signOut}
           className="flex w-full items-center justify-center gap-2 rounded-xl border border-brand-redDark/50 bg-brand-redDark/15 px-3 py-2 text-sm font-semibold text-brand-redBright transition hover:bg-brand-redDark/30"
         >
           <LogOut size={15} /> Sair da conta
         </button>
       </div>
+
+      <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { ArrowDownRight, ArrowUpRight, FileText, Minus, TrendingUp, Wallet, CalendarClock, CheckCircle2 } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, FileText, Minus, TrendingUp, Wallet, Clock, CheckCircle2 } from 'lucide-react'
 import clsx from 'clsx'
 import { formatCurrency, formatPercent } from '../../utils/format.js'
 
@@ -62,54 +62,51 @@ function MetricCard({ icon: Icon, label, value, hint, tone = 'default', footer, 
 }
 
 export default function DashboardMetrics({
-  totals,
-  previousTotals,
-  variation,
-  totalAPagar = 0,
-  contasAPagarCount = 0,
-  totalAPagarGeral = 0,
+  gastoMes = 0,
+  registrosMes = 0,
+  pagoMes = 0,
+  pendenteMes = 0,
+  contasAbertas = 0,
+  contasAbertasCount = 0,
+  variation = 0,
+  gastoAnterior = 0,
 }) {
-  const paidPercent = totals.actual > 0 ? (totals.paid / totals.actual) * 100 : 0
-  const previstoTotal = totals.planned + totalAPagar
+  const paidPercent = gastoMes > 0 ? (pagoMes / gastoMes) * 100 : 0
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
       <MetricCard
         icon={Wallet}
-        label="Saldo Atual do Mês"
-        value={formatCurrency(totals.balance)}
-        tone={totals.balance >= 0 ? 'positive' : 'negative'}
-        hint={
-          totals.balance >= 0
-            ? 'Dentro do orçamento previsto'
-            : 'Orçamento previsto excedido'
-        }
-      />
-      <MetricCard
-        icon={CalendarClock}
-        label="Despesas Previstas"
-        value={formatCurrency(totals.planned)}
-        hint={`${totals.count} lançamento${totals.count === 1 ? '' : 's'} no mês • C/ a pagar: ${formatCurrency(previstoTotal)}`}
-      />
-      <MetricCard
-        icon={FileText}
-        label="A Pagar (Contas)"
-        value={formatCurrency(totalAPagar)}
-        hint={`${contasAPagarCount} conta${contasAPagarCount === 1 ? '' : 's'} em aberto no mês • Geral: ${formatCurrency(totalAPagarGeral)}`}
+        label="Gasto Mensal"
+        value={formatCurrency(gastoMes)}
+        hint={`${registrosMes} registro${registrosMes === 1 ? '' : 's'} • Lançamentos + contas a pagar`}
       />
       <MetricCard
         icon={CheckCircle2}
-        label="Despesas Pagas"
-        value={formatCurrency(totals.paid)}
-        hint={`${formatCurrency(totals.pending)} ainda pendente`}
+        label="Pago no Mês"
+        value={formatCurrency(pagoMes)}
+        hint={`${formatCurrency(pendenteMes)} ainda pendente`}
         progress={paidPercent}
+      />
+      <MetricCard
+        icon={Clock}
+        label="Pendente no Mês"
+        value={formatCurrency(pendenteMes)}
+        tone={pendenteMes > 0 ? 'negative' : 'default'}
+        hint="Lançamentos e contas a quitar"
+      />
+      <MetricCard
+        icon={FileText}
+        label="Contas em Aberto"
+        value={formatCurrency(contasAbertas)}
+        hint={`${contasAbertasCount} conta${contasAbertasCount === 1 ? '' : 's'} em aberto no mês`}
       />
       <MetricCard
         icon={TrendingUp}
         label="Variação vs. mês anterior"
         value={formatPercent(variation)}
         tone={variation > 0 ? 'negative' : 'positive'}
-        hint={`Mês anterior: ${formatCurrency(previousTotals.actual)}`}
+        hint={`Mês anterior: ${formatCurrency(gastoAnterior)}`}
         footer={<TrendBadge value={variation} invert />}
       />
     </div>

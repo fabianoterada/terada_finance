@@ -5,6 +5,9 @@ import { addMonths } from '../utils/format.js'
 
 const FinanceContext = createContext(null)
 
+const EXPENSE_COLUMNS =
+  'id, description, category_id, subcategory_id, expense_type, value_type, planned_value, actual_value, status, reference_month, notes, created_at, updated_at'
+
 /* ------------------------------- Mapeadores ------------------------------- */
 
 function mapSubcategory(row) {
@@ -12,7 +15,13 @@ function mapSubcategory(row) {
 }
 
 function mapCategory(row, subcategories) {
-  return { id: row.id, name: row.name, color: row.color, subcategories }
+  return {
+    id: row.id,
+    name: row.name,
+    color: row.color,
+    tipo: row.tipo === 'receita' ? 'receita' : 'despesa',
+    subcategories,
+  }
 }
 
 function mapExpense(row) {
@@ -44,6 +53,22 @@ function mapContaPendente(row) {
     saldo: Math.max(valor - valorPago, 0),
     dataVencimento: row.data_vencimento,
     categoryId: row.category_id,
+  }
+}
+
+/** Linha da view vw_dashboard_gastos_unificados, já camelizada. */
+function mapGastoUnificado(row) {
+  const origem = row.origem === 'conta_a_pagar' ? 'conta_a_pagar' : 'lancamento'
+  const statusPagamento = row.status_pagamento === 'pago' ? 'pago' : 'pendente'
+  return {
+    id: row.id,
+    descricao: row.descricao ?? '',
+    valor: Number(row.valor) || 0,
+    dataReferencia: row.data_referencia ?? null,
+    statusPagamento,
+    origem,
+    categoriaNome: row.categoria_nome ?? null,
+    categoriaCor: row.categoria_cor ?? null,
   }
 }
 
@@ -92,7 +117,7 @@ function describeError(error) {
     message.includes('Could not find the table') ||
     message.includes('does not exist')
   ) {
-    return 'Tabelas não encontradas no Supabase. Execute o script supabase/schema.sql no SQL Editor do seu projeto.'
+      return 'Tabelas não encontradas no Supabase. Execute supabase/schema.sql, setup_database.sql e as migrações de supabase/migrations no SQL Editor do seu projeto.'
   }
   if (message.includes('Invalid API key') || message.includes('JWT')) {
     return 'Falha de autenticação com o Supabase. Verifique VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.'
@@ -105,6 +130,7 @@ export function FinanceProvider({ children }) {
   const [categories, setCategories] = useState([])
   const [expenses, setExpenses] = useState([])
   const [contasPendentes, setContasPendentes] = useState([])
+  const [viewRows, setViewRows] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -113,6 +139,7 @@ export function FinanceProvider({ children }) {
       setCategories([])
       setExpenses([])
       setContasPendentes([])
+      setViewRows([])
       setLoading(false)
       return
     }
@@ -120,16 +147,31 @@ export function FinanceProvider({ children }) {
     setLoading(true)
     setError('')
     try {
-      const [categoriesResult, subcategoriesResult, expensesResult, contasResult] =
+      const [categoriesResult, subcategoriesResult, expensesResult, contasResult, viewResult] =
         await Promise.all([
-          supabase.from('categories').select('*').order('created_at', { ascending: true }),
-          supabase.from('subcategories').select('*').order('created_at', { ascending: true }),
-          supabase.from('expenses').select('*').order('created_at', { ascending: false }),
+          supabase
+            .from('categories')
+            .select('id, name, color, tipo, created_at')
+            .order('created_at', { ascending: true }),
+          supabase
+            .from('subcategories')
+            .select('id, category_id, name, created_at')
+            .order('created_at', { ascending: true }),
+          supabase
+            .from('expenses')
+            .select(EXPENSE_COLUMNS)
+            .order('created_at', { ascending: false }),
           supabase
             .from('contas_a_pagar')
             .select('id, descricao, valor, valor_pago, data_vencimento, category_id')
             .in('status', ['Pendente', 'Parcial'])
             .order('data_vencimento', { ascending: true }),
+          supabase
+            .from('vw_dashboard_gastos_unificados')
+            .select(
+              'id, descricao, valor, data_referencia, status_pagamento, origem, categoria_nome, categoria_cor',
+            )
+            .order('data_referencia', { ascending: false }),
         ])
 
       if (categoriesResult.error) throw categoriesResult.error
@@ -148,13 +190,26 @@ export function FinanceProvider({ children }) {
       )
       setExpenses(expensesResult.data.map(mapExpense))
 
-      // Melhor esforso: se a tabela contas_a_pagar ainda nao existe no banco,
+      // Melhor esforco: se a tabela contas_a_pagar ainda nao existe no banco,
       // o Dashboard carrega apenas com os lancamentos (sem quebrar a tela).
       if (contasResult.error) {
         console.warn('[FinanceContext] contas_a_pagar indisponiveis:', contasResult.error.message)
         setContasPendentes([])
       } else {
         setContasPendentes((contasResult.data ?? []).map(mapContaPendente))
+      }
+
+      // Melhor esforco: se a view nao existe (migracao ainda nao executada),
+      // o app continua funcionando e o banner orienta o usuario.
+      if (viewResult.error) {
+        console.warn(
+          '[FinanceContext] vw_dashboard_gastos_unificados indisponivel:',
+          viewResult.error.message,
+        )
+        setViewRows([])
+        setError(describeError(viewResult.error))
+      } else {
+        setViewRows((viewResult.data ?? []).map(mapGastoUnificado))
       }
     } catch (err) {
       console.error('[FinanceContext] loadAll:', err)
@@ -170,12 +225,16 @@ export function FinanceProvider({ children }) {
 
   /* ----------------------------- Categorias ----------------------------- */
 
-  const addCategory = useCallback(async ({ name, color }) => {
+  const addCategory = useCallback(async ({ name, color, tipo }) => {
     if (!supabase) return
     const { data, error: err } = await supabase
       .from('categories')
-      .insert({ name: name.trim(), color })
-      .select()
+      .insert({
+        name: name.trim(),
+        color,
+        tipo: tipo === 'receita' ? 'receita' : 'despesa',
+      })
+      .select('id, name, color, tipo, created_at')
       .single()
     if (err) {
       setError(describeError(err))
@@ -184,13 +243,17 @@ export function FinanceProvider({ children }) {
     setCategories((prev) => [...prev, mapCategory(data, [])])
   }, [])
 
-  const updateCategory = useCallback(async (categoryId, { name, color }) => {
+  const updateCategory = useCallback(async (categoryId, { name, color, tipo }) => {
     if (!supabase) return
     const { data, error: err } = await supabase
       .from('categories')
-      .update({ name: name?.trim(), color })
+      .update({
+        name: name?.trim(),
+        color,
+        tipo: tipo === 'receita' ? 'receita' : 'despesa',
+      })
       .eq('id', categoryId)
-      .select()
+      .select('id, name, color, tipo, created_at')
       .single()
     if (err) {
       setError(describeError(err))
@@ -199,7 +262,7 @@ export function FinanceProvider({ children }) {
     setCategories((prev) =>
       prev.map((category) =>
         category.id === categoryId
-          ? { ...category, name: data.name, color: data.color }
+          ? { ...category, name: data.name, color: data.color, tipo: data.tipo }
           : category,
       ),
     )
@@ -223,7 +286,7 @@ export function FinanceProvider({ children }) {
     const { data, error: err } = await supabase
       .from('subcategories')
       .insert({ category_id: categoryId, name: name.trim() })
-      .select()
+      .select('id, category_id, name')
       .single()
     if (err) {
       setError(describeError(err))
@@ -244,7 +307,7 @@ export function FinanceProvider({ children }) {
       .from('subcategories')
       .update({ name: name.trim() })
       .eq('id', subcategoryId)
-      .select()
+      .select('id, category_id, name')
       .single()
     if (err) {
       setError(describeError(err))
@@ -295,7 +358,7 @@ export function FinanceProvider({ children }) {
     const { data: row, error: err } = await supabase
       .from('expenses')
       .insert(toExpenseRecord(data))
-      .select()
+      .select(EXPENSE_COLUMNS)
       .single()
     if (err) {
       setError(describeError(err))
@@ -310,7 +373,7 @@ export function FinanceProvider({ children }) {
       .from('expenses')
       .update(toExpenseRecord(data))
       .eq('id', expenseId)
-      .select()
+      .select(EXPENSE_COLUMNS)
       .single()
     if (err) {
       setError(describeError(err))
@@ -339,7 +402,7 @@ export function FinanceProvider({ children }) {
         .from('expenses')
         .update({ status: nextStatus })
         .eq('id', expenseId)
-        .select()
+        .select(EXPENSE_COLUMNS)
         .single()
       if (err) {
         setError(describeError(err))
@@ -377,7 +440,7 @@ export function FinanceProvider({ children }) {
             status: 'pendente',
           }),
         )
-        .select()
+        .select(EXPENSE_COLUMNS)
         .single()
 
       if (err) {
@@ -427,6 +490,7 @@ export function FinanceProvider({ children }) {
       categories,
       expenses,
       contasPendentes,
+      viewRows,
       loading,
       error,
       setError,
@@ -450,6 +514,7 @@ export function FinanceProvider({ children }) {
       categories,
       expenses,
       contasPendentes,
+      viewRows,
       loading,
       error,
       loadAll,

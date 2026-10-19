@@ -45,7 +45,18 @@ export default function CategoryCard({
             <Tag size={18} />
           </span>
           <div className="min-w-0">
-            <p className="truncate font-bold text-white">{category.name}</p>
+            <div className="flex items-center gap-2">
+              <p className="truncate font-bold text-white">{category.name}</p>
+              <span
+                className={
+                  category.tipo === 'receita'
+                    ? 'badge bg-emerald-500/15 text-emerald-300'
+                    : 'badge bg-brand-redDark/25 text-brand-redBright'
+                }
+              >
+                {category.tipo === 'receita' ? 'Receita' : 'Despesa'}
+              </span>
+            </div>
             <p className="text-xs text-slate-400">
               {category.subcategories.length} subcategoria
               {category.subcategories.length === 1 ? '' : 's'} · {expenseCount} lançamento

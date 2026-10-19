@@ -7,13 +7,26 @@ import ListaContas from '../components/expenses/ListaContas'
 
 export default function ContasAPagarPage() {
   const [formVisivel, setFormVisivel] = useState(false)
+  const [contaEmEdicao, setContaEmEdicao] = useState(null)
   const [recarregarKey, setRecarregarKey] = useState(0)
   const toast = useToast()
 
   function handleSaved() {
+    const editando = Boolean(contaEmEdicao)
     setFormVisivel(false)
+    setContaEmEdicao(null)
     setRecarregarKey((key) => key + 1)
-    toast.success('Conta salva com sucesso.')
+    toast.success(editando ? 'Conta atualizada com sucesso.' : 'Conta salva com sucesso.')
+  }
+
+  function handleEditar(conta) {
+    setContaEmEdicao(conta)
+    setFormVisivel(true)
+  }
+
+  function handleCancel() {
+    setFormVisivel(false)
+    setContaEmEdicao(null)
   }
 
   return (
@@ -26,7 +39,12 @@ export default function ContasAPagarPage() {
           <button
             type="button"
             className={formVisivel ? 'btn-ghost' : 'btn-primary'}
-            onClick={() => setFormVisivel((visible) => !visible)}
+            onClick={() => {
+              setFormVisivel((visible) => {
+                if (visible) setContaEmEdicao(null)
+                return !visible
+              })
+            }}
           >
             {formVisivel ? (
               <>
@@ -43,11 +61,20 @@ export default function ContasAPagarPage() {
 
       {formVisivel && (
         <div className="card p-5">
-          <FormularioConta onSaved={handleSaved} onCancel={() => setFormVisivel(false)} />
+          {contaEmEdicao && (
+            <p className="mb-4 rounded-xl border border-brand-border bg-brand-elevated/40 px-3 py-2 text-sm text-slate-300">
+              Editando <span className="font-semibold text-white">{contaEmEdicao.descricao || '(sem descrição)'}</span>
+            </p>
+          )}
+          <FormularioConta
+            contaInicial={contaEmEdicao}
+            onSaved={handleSaved}
+            onCancel={handleCancel}
+          />
         </div>
       )}
 
-      <ListaContas recarregarKey={recarregarKey} />
+      <ListaContas recarregarKey={recarregarKey} onEditar={handleEditar} />
     </div>
   )
 }
