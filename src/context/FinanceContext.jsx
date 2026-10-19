@@ -53,6 +53,7 @@ function mapContaPendente(row) {
     saldo: Math.max(valor - valorPago, 0),
     dataVencimento: row.data_vencimento,
     categoryId: row.category_id,
+    subcategoryId: row.subcategory_id ?? null,
   }
 }
 
@@ -163,7 +164,7 @@ export function FinanceProvider({ children }) {
             .order('created_at', { ascending: false }),
           supabase
             .from('contas_a_pagar')
-            .select('id, descricao, valor, valor_pago, data_vencimento, category_id')
+            .select('id, descricao, valor, valor_pago, data_vencimento, category_id, subcategory_id')
             .in('status', ['Pendente', 'Parcial'])
             .order('data_vencimento', { ascending: true }),
           supabase

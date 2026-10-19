@@ -57,6 +57,7 @@ export default function UsersPage() {
         .select('id')
 
       if (updateError) {
+        console.error('[UsersPage] Falha ao atualizar usuário em profiles:', updateError, { id, patch })
         setError(updateError.message)
         return
       }
@@ -68,6 +69,7 @@ export default function UsersPage() {
       }
       await load()
     } catch (err) {
+      console.error('[UsersPage] Erro inesperado ao atualizar usuário:', err, { id, patch })
       setError(err instanceof Error && err.message ? err.message : 'Erro ao atualizar o usuário.')
     } finally {
       setBusyId(null)

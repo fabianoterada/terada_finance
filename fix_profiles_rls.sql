@@ -57,7 +57,10 @@ as $$
   select coalesce((select p.is_admin from public.profiles p where p.id = auth.uid()), false);
 $$;
 
--- 2.2) Remove a policy antiga (permitia apenas o proprio perfil) e garante a
+-- 2.2) Garante os privilegios da role authenticated na tabela.
+grant select, insert, update, delete on public.profiles to authenticated;
+
+-- 2.3) Remove a policy antiga (permitia apenas o proprio perfil) e garante a
 --      policy que tambem libera administradores.
 alter table public.profiles enable row level security;
 
@@ -66,10 +69,11 @@ drop policy if exists "profiles_update" on public.profiles;
 
 create policy "profiles_update" on public.profiles
   for update
+  to authenticated
   using (auth.uid() = id or public.is_admin())
   with check (auth.uid() = id or public.is_admin());
 
--- 2.3) Trigger de protecao: mantem a regra de que somente admins podem alterar
+-- 2.4) Trigger de protecao: mantem a regra de que somente admins podem alterar
 --      is_admin/is_active de terceiros (nao bloqueia o admin).
 create or replace function public.protect_profile_fields()
 returns trigger
@@ -96,7 +100,15 @@ create trigger trg_profiles_protect
   before update on public.profiles
   for each row execute function public.protect_profile_fields();
 
--- 2.4) Teste rapido (substitua o e-mail): deve retornar 1 linha alterada.
+-- 2.5) Confirmacao: deve exibir a policy "profiles_update" com o USING/WITH
+--      CHECK contendo public.is_admin().
+select policyname, cmd, roles, qual, with_check
+  from pg_policies
+ where schemaname = 'public'
+   and tablename = 'profiles'
+ order by policyname;
+
+-- 2.6) Teste rapido (substitua o e-mail): deve retornar 1 linha alterada.
 -- update public.profiles
 --    set full_name = full_name
 --  where email = 'usuario@exemplo.com'

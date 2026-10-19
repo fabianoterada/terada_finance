@@ -64,7 +64,7 @@ function contaToReportItem(conta) {
     id: `conta-${conta.id}`,
     description: conta.descricao,
     categoryId: conta.categoryId,
-    subcategoryId: null,
+    subcategoryId: conta.subcategoryId ?? null,
     expenseType: 'variavel',
     plannedValue: saldo,
     actualValue: saldo,

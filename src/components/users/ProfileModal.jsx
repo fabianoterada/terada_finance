@@ -78,6 +78,7 @@ export default function ProfileModal({ open, onClose }) {
       toast.success('Perfil atualizado com sucesso.')
       onClose?.()
     } catch (err) {
+      console.error('[ProfileModal] Falha ao atualizar perfil:', err)
       const message =
         err instanceof Error && err.message ? err.message : 'Erro ao atualizar o perfil.'
       setErro(message)
